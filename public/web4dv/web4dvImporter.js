@@ -147,6 +147,11 @@ export default class WEB4DS {
       this.showPlaceholder = showPlaceholder
       this.playOnload = playOnload
 
+      // Reset resource manager before loading new video
+      if (typeof resourceManager.reset === 'function') {
+        resourceManager.reset();
+      }
+
       if (this.renderer.extensions.get('WEBGL_compressed_texture_astc')) {
         resourceManager.set4DSFile(this.urlM)
         Decoder4D.SetInputTextureEncoding(164)
@@ -369,6 +374,12 @@ export default class WEB4DS {
 
   playAudio() {
     if (this.isAudioplaying === false) {
+      // Check if audio is loaded before attempting to play
+      if (!this.model4D || !this.model4D.audioSound || !this.model4D.audioSound.buffer) {
+        console.warn('[WEB4DS] Audio not loaded, skipping audio playback');
+        return;
+      }
+
       this.audioTrack = this.audioCtx.createBufferSource()
       this.audioTrack.loop = true
       this.audioTrack.buffer = this.model4D.audioSound.buffer
