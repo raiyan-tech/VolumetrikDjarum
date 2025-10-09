@@ -90,7 +90,7 @@ export default class WEB4DS {
 
     // Waiter
     this.waiterParent = this.renderer.domElement
-    this.waiterElemLogo = new Image(320, 320)
+    this.waiterElemLogo = new Image(160, 160)  // Resized to 50%
     this.waiterLoaded = false
 
     if (this.waiterParent) {
@@ -102,12 +102,12 @@ export default class WEB4DS {
       this.waiterElem.id = 'web4dv-waiter'
       this.waiterElem.style.position = 'absolute'
       this.waiterElem.style.backgroundImage = 'red'
-      this.waiterElem.style.top = '50%'
+      this.waiterElem.style.top = '120px'  // Moved to upper part (was 50%)
       this.waiterElem.style.left = '50%'
-      this.waiterElem.style.width = '320px'
-      this.waiterElem.style.height = '320px'
-      this.waiterElem.style.marginTop = '-160px'
-      this.waiterElem.style.marginLeft = '-160px'
+      this.waiterElem.style.width = '160px'  // Resized to 50%
+      this.waiterElem.style.height = '160px'  // Resized to 50%
+      this.waiterElem.style.marginTop = '0px'  // Adjusted for top positioning
+      this.waiterElem.style.marginLeft = '-80px'  // Adjusted to center (was -160px)
       this.waiterElem.style.opacity = (waiterElemOpacity / 100)
       this.waiterElem.style.zIndex = '2'
 
