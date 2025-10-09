@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(cmd:*)",
+      "Bash(tree:*)",
+      "Bash(python:*)",
+      "Bash(timeout:*)",
+      "Bash(ipconfig)",
+      "Bash(findstr:*)",
+      "Read(//c/PROJECT/SPEKTRAL/**)",
+      "Bash(firebase projects:list:*)",
+      "Bash(firebase deploy:*)",
+      "Bash(firebase hosting:sites:list:*)",
+      "Bash(where gsutil)",
+      "Bash(gcloud:*)",
+      "Read(//c/PROJECT/VOLUMETRIK/Player/VOLUMETRIC_APP_CURSOR/instruction/**)",
+      "Read(//c/PROJECT/VOLUMETRIK/Player/UPDATED_PLAYER/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

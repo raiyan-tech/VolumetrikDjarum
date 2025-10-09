@@ -1,0 +1,34 @@
+html, body {
+    margin: 0 auto;
+    padding: 0;
+    width: 100vw;
+    max-width:100%;
+    height: 75vh;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+@media only screen and (min-width: 600px) {
+    body {
+        width: 75vw;
+    }
+}
+
+h1 {
+    padding-top: 1em;
+    padding-bottom: 1em;
+    font-size: 3.5em;
+}
+
+h1, h4 {
+    padding-left: 1em;
+    padding-right: 1em;
+}
+
+/* The dimensions of the player are set here */
+.video-placeholder {
+    margin:0 auto;
+    width: 100vw;
+    max-width:100%;
+    height: 75vh;
+    padding-bottom: 3em;
+}

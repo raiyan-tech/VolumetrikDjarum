@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="description" content="Volumetric Video Streaming Demo - 4DView Player" />
+  <title>Volumetrik - 4DS Player Demo</title>
+
+  <!-- THREE.js Library -->
+  <script src="./lib/three.min.js"></script>
+  <script src="./lib/WebGL.js"></script>
+  <script src="./lib/OrbitControls.js"></script>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      position: relative;
+      color: #fff;
+    }
+
+    #canvas4D {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    .branding {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(10px);
+      padding: 8px 16px 8px 8px;
+      border-radius: 50px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    }
+
+    .branding .logo {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #fff;
+      padding: 4px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .branding .logo img {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .branding h1 {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    }
+
+    .branding p {
+      font-size: 11px;
+      opacity: 0.9;
+      font-weight: 300;
+      margin: 0;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    }
+
+    .video-selector {
+      position: absolute;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      display: flex;
+      gap: 8px;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.18);
+      backdrop-filter: blur(10px);
+      border-radius: 25px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    }
+
+    .video-btn {
+      background: rgba(255, 255, 255, 0.85);
+      border: none;
+      padding: 10px 18px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      color: #1f2937;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      min-width: 120px;
+    }
+
+    .video-btn.active {
+      background: #ffffff;
+      color: #4c51bf;
+      box-shadow: 0 6px 20px rgba(76, 81, 191, 0.25);
+    }
+
+    .video-btn .label {
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .video-btn .video-progress {
+      font-size: 10px;
+      font-weight: 500;
+      opacity: 0.7;
+    }
+
+    .controls {
+      position: absolute;
+      bottom: calc(env(safe-area-inset-bottom, 24px) + 90px);
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      display: flex;
+      gap: 12px;
+      padding: 16px;
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(10px);
+      border-radius: 50px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .btn {
+      background: rgba(255, 255, 255, 0.92);
+      border: none;
+      border-radius: 50%;
+      width: 56px;
+      height: 56px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      color: #334155;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .btn:hover {
+      transform: scale(1.08);
+      background: #fff;
+    }
+
+    .timeline {
+      position: absolute;
+      left: 50%;
+      bottom: calc(env(safe-area-inset-bottom, 24px) + 40px);
+      transform: translateX(-50%);
+      width: min(80vw, 560px);
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+      z-index: 100;
+    }
+
+    .timeline input[type="range"] {
+      width: 100%;
+      appearance: none;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.45);
+      outline: none;
+      cursor: pointer;
+    }
+
+    .timeline input[type="range"]::-webkit-slider-thumb {
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #60a5fa;
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8);
+    }
+
+    .timeline input[type="range"]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #60a5fa;
+      border: 2px solid rgba(255, 255, 255, 0.8);
+    }
+
+    .timeline-info {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      font-size: 12px;
+      opacity: 0.85;
+    }
+
+    .progress-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: calc(env(safe-area-inset-bottom, 0px) + 70px);
+      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+      background: rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(10px);
+      z-index: 90;
+    }
+
+    .progress-fill {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      height: 4px;
+      background: #60a5fa;
+      width: 0;
+      transition: width 0.1s linear;
+    }
+
+    .progress-info {
+      position: absolute;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+      right: 16px;
+      font-size: 12px;
+      display: flex;
+      gap: 16px;
+      opacity: 0.85;
+    }
+
+    .loading,
+    .loading-overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: none;
+    }
+
+    .loading {
+      z-index: 110;
+      background: rgba(0, 0, 0, 0.85);
+      color: #fff;
+      padding: 24px 32px;
+      border-radius: 16px;
+      text-align: center;
+      width: 260px;
+    }
+
+    .loading.show {
+      display: block;
+    }
+
+    .loading-overlay {
+      z-index: 109;
+      width: 120px;
+      height: 120px;
+      border-radius: 16px;
+      background: rgba(15, 23, 42, 0.45);
+      display: none;
+    }
+
+    .loading-overlay.show {
+      display: block;
+    }
+
+    .spinner {
+      border: 3px solid rgba(255, 255, 255, 0.25);
+      border-top: 3px solid #fff;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 12px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .instructions {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 105;
+      background: rgba(15, 23, 42, 0.9);
+      color: #fff;
+      padding: 32px;
+      border-radius: 16px;
+      max-width: 400px;
+      text-align: center;
+      display: none;
+      box-shadow: 0 20px 40px rgba(15, 23, 42, 0.5);
+    }
+
+    .instructions.show {
+      display: block;
+    }
+
+    .instructions h2 {
+      margin-bottom: 16px;
+      font-size: 24px;
+    }
+
+    .instructions p {
+      margin-bottom: 12px;
+      line-height: 1.6;
+      opacity: 0.9;
+    }
+
+    .instructions button {
+      margin-top: 16px;
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      padding: 12px 32px;
+      border-radius: 24px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    .instructions button:hover {
+      background: #4f46e5;
+    }
+
+    #ar-button-container {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 100;
+    }
+
+    @media (max-width: 768px) {
+      .video-selector {
+        flex-wrap: wrap;
+        max-width: 90vw;
+      }
+
+      .controls {
+        bottom: calc(env(safe-area-inset-bottom, 20px) + 80px);
+        gap: 8px;
+        padding: 12px;
+      }
+
+      .btn {
+        width: 48px;
+        height: 48px;
+        font-size: 18px;
+      }
+
+      .timeline {
+        width: min(90vw, 520px);
+        bottom: calc(env(safe-area-inset-bottom, 16px) + 36px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="branding">
+    <div class="logo">
+      <img src="./assets/logo.png" alt="Logo" />
+    </div>
+    <div class="text">
+      <h1>Spectralysium Player</h1>
+      <p>By Raiyan Laksamana</p>
+    </div>
+  </div>
+
+  <div id="ar-button-container"></div>
+
+  <div class="video-selector" id="video-selector">
+    <button class="video-btn active" data-video="dance-nani">
+      <span class="label">Topeng Losari</span>
+      <span class="video-progress" data-progress="dance-nani">--</span>
+    </button>
+    <button class="video-btn" data-video="dance-didik">
+      <span class="label">Dua Muka</span>
+      <span class="video-progress" data-progress="dance-didik">--</span>
+    </button>
+    <button class="video-btn" data-video="martial-asep">
+      <span class="label">Golok Panglipur</span>
+      <span class="video-progress" data-progress="martial-asep">--</span>
+    </button>
+    <button class="video-btn" data-video="martial-dian">
+      <span class="label">Kipas Panglipur</span>
+      <span class="video-progress" data-progress="martial-dian">--</span>
+    </button>
+    <button class="video-btn" data-video="martial-duel">
+      <span class="label">Duel Panglipur</span>
+      <span class="video-progress" data-progress="martial-duel">--</span>
+    </button>
+  </div>
+
+  <canvas id="canvas4D"></canvas>
+
+  <div class="loading-overlay" id="loading-overlay"></div>
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div>Loading volumetric video…</div>
+  </div>
+
+  <div class="instructions" id="instructions">
+    <h2>Welcome 👋</h2>
+    <p>Select a video above to start streaming volumetric content.</p>
+    <p>On mobile? Use the AR button to drop the performer in your space.</p>
+    <p>Use mouse or touch to rotate and zoom the 3D model.</p>
+    <button type="button" onclick="document.getElementById('instructions').classList.remove('show')">Got it!</button>
+  </div>
+
+  <div class="controls">
+    <button class="btn" id="btn-play" title="Play">&#9658;</button>
+    <button class="btn" id="btn-pause" title="Pause">&#10073;&#10073;</button>
+    <button class="btn" id="btn-restart" title="Restart">&#10226;</button>
+    <button class="btn" id="btn-mute" title="Mute">&#128266;</button>
+  </div>
+
+  <div class="timeline" id="timeline">
+    <input type="range" id="timeline-slider" min="0" max="100" value="0" step="1" />
+    <div class="timeline-info">
+      <span id="time-current">00:00</span>
+      <span>/</span>
+      <span id="time-total">00:00</span>
+    </div>
+  </div>
+
+  <div class="progress-bar">
+    <div class="progress-fill" id="progress-fill"></div>
+    <div class="progress-info">
+      <span>Frame: <span id="frame-current">0</span> / <span id="frame-total">0</span></span>
+      <span>Buffered: <span id="frame-buffered">0</span> frames</span>
+    </div>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
+
+

@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+
+<head>
+
+  <meta charset="utf-8">
+
+  <!-- viewport-fit=cover makes the viewer fit all screen on mobile when fullscreen is on -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+
+  <title>&lt;viewer-4dv&gt; example</title>
+
+  <!-- Import the <viewer-4dv> tag to your page -->
+  <script type="module" src="https://unpkg.com/viewer-4dv/viewer-4dv.min.js" defer></script>
+
+  <!-- add your custom CSS -->
+  <link rel="stylesheet" href="style.css">
+
+</head>
+
+<body>
+
+  <h1>&lt;viewer-4dv&gt; example</h1>
+
+  <h4>
+    In this example, all the parameters have been enabled. Try changing each of them to view the effect it has on the
+    web player!
+  </h4>
+
+  <!-- the <viewer-4dv> will fill your video container -->
+  <div class="video-placeholder">
+
+    <!-- The embedded 4ds -->
+    <viewer-4dv grid stats loop src-mobile="4ds/Fire_Mobile_720.4ds" src-desktop="4ds/Fire_Desktop_720.4ds"
+      poster="img/poster.webp" bg-color="#e0e0e0" camera-pos="[1,3,3]" camera-target="[0,0.5,0]" min-distance="3"
+      max-distance="5">
+    </viewer-4dv>
+
+  </div>
+
+
+</body>
+
+</html>

@@ -1,0 +1,18 @@
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Node
+node_modules/
+
+# Large 4DS files (will be hosted on Cloud Storage)
+*.4ds
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
