@@ -426,7 +426,24 @@ export default class WEB4DS {
   keepsChunksInCache(booleanVal) {
     Decoder4D._keepChunksInCache = booleanVal
   }
-  
+
+  setChunkSize(sizeInBytes) {
+    // Allow dynamic chunk size configuration
+    // Default is 6MB, can be increased for desktop or decreased for mobile
+    if (sizeInBytes && sizeInBytes > 0) {
+      resourceManager._internalCacheSize = sizeInBytes
+      console.log(`[WEB4DS] Chunk size set to ${(sizeInBytes / 1000000).toFixed(2)}MB`)
+    }
+  }
+
+  setMaxCacheSize(maxSize) {
+    // Configure maximum cache size (number of decoded frames)
+    if (maxSize && maxSize > 0) {
+      Decoder4D._maxCacheSize = maxSize
+      console.log(`[WEB4DS] Max cache size set to ${maxSize} frames`)
+    }
+  }
+
   setWaitingGif(url) {
 	  this.waiterElemLogo.src = url;
   }

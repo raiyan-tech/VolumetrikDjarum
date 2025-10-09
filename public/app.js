@@ -32,7 +32,7 @@ const VIDEO_LIBRARY = {
     mobile: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/DANCE/Didik_Take_01_30_00fps_FILTERED_MOBILE_720-002.4ds",
     position: [0, 0, 0],
     isLarge: true,
-    maxWaitMs: 240000
+    maxWaitMs: 480000
   }
 };
 
@@ -483,7 +483,33 @@ function createSequence(videoId, videoConfig, options = {}) {
     );
 
     currentSequence.startFrame = startFrame;
-    currentSequence.keepsChunksInCache(!IS_MOBILE);
+
+    // Optimize caching based on device and file size
+    const isLargeFile = videoConfig.isLarge || false;
+
+    if (IS_MOBILE) {
+      // Mobile: aggressive streaming, minimal cache
+      currentSequence.keepsChunksInCache(false);
+      currentSequence.setChunkSize(3000000);  // 3MB chunks for mobile
+      currentSequence.setMaxCacheSize(15);    // Cache only 15 frames
+      console.log('[Volumetrik] Mobile: 3MB chunks, 15 frame cache');
+    } else {
+      // Desktop: larger chunks for better performance
+      if (isLargeFile) {
+        // Large desktop files: bigger chunks, streaming mode
+        currentSequence.keepsChunksInCache(false);
+        currentSequence.setChunkSize(15000000); // 15MB chunks for large desktop files
+        currentSequence.setMaxCacheSize(30);    // Cache 30 frames
+        console.log('[Volumetrik] Desktop large file: 15MB chunks, 30 frame cache, streaming');
+      } else {
+        // Normal desktop files: optimal chunks, full caching
+        currentSequence.keepsChunksInCache(true);
+        currentSequence.setChunkSize(10000000); // 10MB chunks
+        currentSequence.setMaxCacheSize(40);    // Cache 40 frames
+        console.log('[Volumetrik] Desktop normal: 10MB chunks, 40 frame cache, full caching');
+      }
+    }
+
     currentSequence.shouldResumePlayback = resumePlayback;
 
     try {
