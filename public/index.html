@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="description" content="Volumetric Video Streaming Demo - 4DView Player" />
-  <title>Volumetrik - 4DS Player Demo</title>
+  <title>Spectralysium - Preservasi Seni Gerak Demo</title>
 
   <!-- THREE.js Library -->
   <script src="./lib/three.min.js"></script>
@@ -39,27 +39,29 @@
 
     .branding {
       position: absolute;
-      top: 20px;
-      left: 20px;
+      top: calc(env(safe-area-inset-top, 12px) + 12px);
+      left: 16px;
+      right: 16px;
       z-index: 100;
       display: flex;
       align-items: center;
       gap: 12px;
-      background: rgba(255, 255, 255, 0.12);
-      backdrop-filter: blur(10px);
-      padding: 8px 16px 8px 8px;
-      border-radius: 50px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+      background: rgba(17, 25, 40, 0.55);
+      backdrop-filter: blur(14px);
+      padding: 8px 14px;
+      border-radius: 22px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 14px 40px rgba(15, 23, 42, 0.2);
     }
 
     .branding .logo {
-      width: 40px;
-      height: 40px;
+      width: 34px;
+      height: 34px;
       border-radius: 50%;
       background: #fff;
-      padding: 4px;
+      padding: 3px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      flex-shrink: 0;
     }
 
     .branding .logo img {
@@ -68,35 +70,75 @@
       display: block;
     }
 
-    .branding h1 {
-      font-size: 18px;
-      font-weight: 700;
-      margin: 0;
-      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    .branding .text {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+      line-height: 1.3;
     }
 
-    .branding p {
+    .branding .title {
+      font-size: 15px;
+      font-weight: 700;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+      letter-spacing: 0.3px;
+    }
+
+    .branding .meta {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
       font-size: 11px;
-      opacity: 0.9;
-      font-weight: 300;
-      margin: 0;
-      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+      line-height: 1.4;
+    }
+
+    .branding .creator {
+      font-weight: 600;
+      opacity: 0.95;
+      letter-spacing: 0.2px;
+    }
+
+    .branding .contact-info {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 10px;
+      opacity: 0.75;
+      font-weight: 500;
+    }
+
+    .branding .contact {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .branding .contact::before {
+      content: '•';
+      font-size: 8px;
+      opacity: 0.5;
+    }
+
+    .branding .contact:first-child::before {
+      content: '';
     }
 
     .video-selector {
       position: absolute;
-      top: 80px;
+      top: calc(env(safe-area-inset-top, 12px) + 58px);
       left: 50%;
       transform: translateX(-50%);
       z-index: 100;
       display: flex;
       gap: 8px;
-      padding: 12px;
-      background: rgba(255, 255, 255, 0.18);
-      backdrop-filter: blur(10px);
-      border-radius: 25px;
-      border: 1px solid rgba(255, 255, 255, 0.25);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.22);
+      backdrop-filter: blur(12px);
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.25);
+      max-width: calc(100vw - 48px);
     }
 
     .video-btn {
@@ -175,7 +217,7 @@
       bottom: calc(env(safe-area-inset-bottom, 24px) + 40px);
       transform: translateX(-50%);
       width: min(80vw, 560px);
-      display: flex;
+      display: none;
       flex-direction: column;
       align-items: stretch;
       gap: 8px;
@@ -356,13 +398,66 @@
     }
 
     @media (max-width: 768px) {
+      .branding {
+        left: 12px;
+        right: 12px;
+        padding: 8px 12px;
+        border-radius: 18px;
+      }
+
+      .branding .title {
+        font-size: 14px;
+      }
+
+      .branding .meta {
+        font-size: 11px;
+        gap: 8px;
+        white-space: nowrap;
+      }
+
+      .branding .text {
+        gap: 2px;
+      }
+
+      .branding .title {
+        font-size: 13px;
+      }
+
+      .branding .meta {
+        font-size: 10px;
+      }
+
+      .branding .contact-info {
+        font-size: 9px;
+        gap: 6px;
+      }
+
+      .branding .contact:last-child {
+        display: none;
+      }
+
       .video-selector {
-        flex-wrap: wrap;
-        max-width: 90vw;
+        top: calc(env(safe-area-inset-top, 12px) + 56px);
+        width: calc(100vw - 32px);
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        gap: 6px;
+        padding: 10px 12px;
+        scrollbar-width: none;
+      }
+
+      .video-selector::-webkit-scrollbar {
+        display: none;
+      }
+
+      .video-btn {
+        flex: 0 0 auto;
+        min-width: 110px;
+        padding: 10px 14px;
       }
 
       .controls {
-        bottom: calc(env(safe-area-inset-bottom, 20px) + 80px);
+        bottom: calc(env(safe-area-inset-bottom, 24px) + 108px);
         gap: 8px;
         padding: 12px;
       }
@@ -374,8 +469,13 @@
       }
 
       .timeline {
-        width: min(90vw, 520px);
-        bottom: calc(env(safe-area-inset-bottom, 16px) + 36px);
+        width: calc(100vw - 48px);
+        bottom: calc(env(safe-area-inset-bottom, 24px) + 160px);
+      }
+
+      .progress-bar {
+        height: calc(env(safe-area-inset-bottom, 0px) + 56px);
+        padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
       }
     }
   </style>
@@ -383,11 +483,17 @@
 <body>
   <div class="branding">
     <div class="logo">
-      <img src="./assets/logo.png" alt="Logo" />
+      <img src="./assets/logo.png" alt="Spectralysium Logo" />
     </div>
     <div class="text">
-      <h1>Spectralysium Player</h1>
-      <p>By Raiyan Laksamana</p>
+      <span class="title">Spectralysium Player</span>
+      <div class="meta">
+        <span class="creator">Raiyan Laksamana</span>
+        <div class="contact-info">
+          <span class="contact">raiyan@spectralysium.com</span>
+          <span class="contact">+62 812 8298 4548</span>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -397,10 +503,6 @@
     <button class="video-btn active" data-video="dance-nani">
       <span class="label">Topeng Losari</span>
       <span class="video-progress" data-progress="dance-nani">--</span>
-    </button>
-    <button class="video-btn" data-video="dance-didik">
-      <span class="label">Dua Muka</span>
-      <span class="video-progress" data-progress="dance-didik">--</span>
     </button>
     <button class="video-btn" data-video="martial-asep">
       <span class="label">Golok Panglipur</span>
@@ -414,6 +516,10 @@
       <span class="label">Duel Panglipur</span>
       <span class="video-progress" data-progress="martial-duel">--</span>
     </button>
+    <button class="video-btn" data-video="dance-didik">
+      <span class="label">Dua Muka</span>
+      <span class="video-progress" data-progress="dance-didik">--</span>
+    </button>
   </div>
 
   <canvas id="canvas4D"></canvas>
@@ -422,14 +528,14 @@
 
   <div class="loading" id="loading">
     <div class="spinner"></div>
-    <div>Loading volumetric video…</div>
+    <div>Loading volumetric video...</div>
   </div>
 
-  <div class="instructions" id="instructions">
-    <h2>Welcome 👋</h2>
-    <p>Select a video above to start streaming volumetric content.</p>
-    <p>On mobile? Use the AR button to drop the performer in your space.</p>
-    <p>Use mouse or touch to rotate and zoom the 3D model.</p>
+    <div class="instructions" id="instructions">
+    <h2>Welcome!</h2>
+    <p>Select a performance above to start streaming volumetric content.</p>
+    <p>Use the AR button on mobile to place the performer in your space.</p>
+    <p>Use mouse or touch to rotate, pan, and zoom in the 3D scene.</p>
     <button type="button" onclick="document.getElementById('instructions').classList.remove('show')">Got it!</button>
   </div>
 
@@ -441,7 +547,7 @@
   </div>
 
   <div class="timeline" id="timeline">
-    <input type="range" id="timeline-slider" min="0" max="100" value="0" step="1" />
+    <input type="range" id="timeline-slider" min="0" max="100" value="0" step="1" aria-label="Playback timeline" />
     <div class="timeline-info">
       <span id="time-current">00:00</span>
       <span>/</span>
@@ -460,5 +566,3 @@
   <script type="module" src="./app.js"></script>
 </body>
 </html>
-
-
