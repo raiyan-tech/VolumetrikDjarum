@@ -90,6 +90,13 @@ let resizeTimeout = null;
 let arEventListenersAdded = false;
 let lastFrameUpdate = -1;
 let arPlacedMeshes = []; // Track meshes placed in AR mode
+let arTouchState = {
+  touches: [],
+  initialDistance: 0,
+  initialScale: 1,
+  selectedMesh: null,
+  isDragging: false
+};
 
 function init() {
   if (hasInitialized) return;
@@ -292,6 +299,16 @@ function setActiveVideoButton(videoId) {
 }
 
 function loadVideo(videoId, options = {}) {
+  // Exit AR mode if active before switching videos
+  if (isARMode && renderer && renderer.xr && renderer.xr.isPresenting) {
+    console.log('[Volumetrik] Exiting AR mode before switching videos');
+    try {
+      renderer.xr.getSession().end();
+    } catch (error) {
+      console.warn('[Volumetrik] Error ending AR session:', error);
+    }
+  }
+
   // If another load is already underway, cancel it so we can switch quickly
   if (isLoadingVideo) {
     console.log('[Volumetrik] Cancelling in-progress load for', currentVideoId);
@@ -919,6 +936,9 @@ function onARSessionStart() {
   const controller = renderer.xr.getController(0);
   controller.addEventListener('select', onARSelect);
   scene.add(controller);
+
+  // Add touch gesture handlers for AR transform controls
+  setupARGestureControls();
 }
 
 function onARSessionEnd() {
@@ -926,6 +946,20 @@ function onARSessionEnd() {
   isARMode = false;
   hitTestSourceRequested = false;
   hitTestSource = null;
+
+  // Remove AR gesture controls
+  document.removeEventListener('touchstart', onARTouchStart);
+  document.removeEventListener('touchmove', onARTouchMove);
+  document.removeEventListener('touchend', onARTouchEnd);
+
+  // Reset touch state
+  arTouchState = {
+    touches: [],
+    initialDistance: 0,
+    initialScale: 1,
+    selectedMesh: null,
+    isDragging: false
+  };
 
   // Restore scene background
   scene.background = new THREE.Color(0x1a1a2e);
@@ -983,12 +1017,28 @@ function onARSelect() {
   }
 
   try {
+    // Remove any previously placed meshes - only allow one at a time
+    arPlacedMeshes.forEach((mesh) => {
+      scene.remove(mesh);
+      if (mesh.geometry) mesh.geometry.dispose();
+      if (mesh.material) {
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach(mat => mat.dispose());
+        } else {
+          mesh.material.dispose();
+        }
+      }
+    });
+    arPlacedMeshes = [];
+
+    // Place new mesh at reticle position
     const mesh = currentSequence.model4D.mesh.clone();
     mesh.position.setFromMatrixPosition(reticle.matrix);
     mesh.scale.set(0.3, 0.3, 0.3);
+    mesh.name = 'ar-placed-actor'; // Name it for easy identification
     scene.add(mesh);
-    arPlacedMeshes.push(mesh); // Track this mesh for cleanup
-    console.log('[Volumetrik] AR: Placed volumetric content in scene (total placed: ' + arPlacedMeshes.length + ')');
+    arPlacedMeshes.push(mesh);
+    console.log('[Volumetrik] AR: Placed actor at new position (replacing previous)');
   } catch (error) {
     console.error('[Volumetrik] AR select failed:', error);
   }
@@ -1040,6 +1090,82 @@ function handleARHitTest(frame) {
   } else if (reticle && isARMode) {
     // No hit test available, show reticle at a fixed position in front of camera
     reticle.visible = true;
+  }
+}
+
+function setupARGestureControls() {
+  // Remove existing listeners if any
+  document.removeEventListener('touchstart', onARTouchStart);
+  document.removeEventListener('touchmove', onARTouchMove);
+  document.removeEventListener('touchend', onARTouchEnd);
+
+  // Add new listeners
+  document.addEventListener('touchstart', onARTouchStart, { passive: false });
+  document.addEventListener('touchmove', onARTouchMove, { passive: false });
+  document.addEventListener('touchend', onARTouchEnd, { passive: false });
+
+  console.log('[Volumetrik] AR gesture controls enabled');
+}
+
+function onARTouchStart(event) {
+  if (!isARMode || arPlacedMeshes.length === 0) return;
+
+  arTouchState.touches = Array.from(event.touches);
+
+  if (event.touches.length === 1) {
+    // Single touch - rotation mode
+    arTouchState.isDragging = true;
+    arTouchState.selectedMesh = arPlacedMeshes[0];
+    event.preventDefault();
+  } else if (event.touches.length === 2) {
+    // Two fingers - scale and move mode
+    const dx = event.touches[0].clientX - event.touches[1].clientX;
+    const dy = event.touches[0].clientY - event.touches[1].clientY;
+    arTouchState.initialDistance = Math.sqrt(dx * dx + dy * dy);
+    arTouchState.initialScale = arPlacedMeshes[0].scale.x;
+    arTouchState.selectedMesh = arPlacedMeshes[0];
+    event.preventDefault();
+  }
+}
+
+function onARTouchMove(event) {
+  if (!isARMode || !arTouchState.selectedMesh) return;
+
+  if (event.touches.length === 1 && arTouchState.isDragging) {
+    // Single finger drag - rotate the actor around Y axis
+    const touch = event.touches[0];
+    const previousTouch = arTouchState.touches[0];
+
+    if (previousTouch) {
+      const deltaX = touch.clientX - previousTouch.clientX;
+      arTouchState.selectedMesh.rotation.y -= deltaX * 0.01; // Adjust sensitivity
+    }
+
+    arTouchState.touches = Array.from(event.touches);
+    event.preventDefault();
+  } else if (event.touches.length === 2) {
+    // Pinch to scale
+    const dx = event.touches[0].clientX - event.touches[1].clientX;
+    const dy = event.touches[0].clientY - event.touches[1].clientY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    const scale = (distance / arTouchState.initialDistance) * arTouchState.initialScale;
+    const clampedScale = Math.max(0.1, Math.min(2.0, scale)); // Clamp between 0.1x and 2x
+
+    arTouchState.selectedMesh.scale.set(clampedScale, clampedScale, clampedScale);
+    event.preventDefault();
+  }
+}
+
+function onARTouchEnd(event) {
+  if (!isARMode) return;
+
+  if (event.touches.length === 0) {
+    arTouchState.isDragging = false;
+    arTouchState.selectedMesh = null;
+    arTouchState.touches = [];
+  } else {
+    arTouchState.touches = Array.from(event.touches);
   }
 }
 
