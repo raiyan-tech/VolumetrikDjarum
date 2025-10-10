@@ -839,18 +839,22 @@ function setupARButton() {
           console.log('[Volumetrik] Requesting AR session...');
 
           try {
-            // Attempt 1: Minimal AR first (most compatible)
-            session = await navigator.xr.requestSession('immersive-ar', {});
-            console.log('[Volumetrik] Minimal AR session granted');
+            // Attempt 1: Try with local-floor reference space (better tracking)
+            session = await navigator.xr.requestSession('immersive-ar', {
+              optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
+            });
+            console.log('[Volumetrik] AR session granted with local-floor');
+            // Use local-floor reference space for better tracking
+            renderer.xr.setReferenceSpaceType('local-floor');
           } catch (e) {
-            console.warn('[Volumetrik] Minimal AR failed, trying with optional features:', e.message);
+            console.warn('[Volumetrik] local-floor AR failed, trying viewer mode:', e.message);
 
-            // Attempt 2: Try with optional features
+            // Attempt 2: Fallback to viewer reference space (more compatible)
             try {
-              session = await navigator.xr.requestSession('immersive-ar', {
-                optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
-              });
-              console.log('[Volumetrik] AR session granted with optional features');
+              session = await navigator.xr.requestSession('immersive-ar', {});
+              console.log('[Volumetrik] AR session granted with viewer mode');
+              // Use viewer reference space for devices that don't support local-floor
+              renderer.xr.setReferenceSpaceType('viewer');
             } catch (e2) {
               // Provide helpful error message
               throw new Error('Your device reports AR support but cannot create an AR session. This may be due to:\n\n' +
