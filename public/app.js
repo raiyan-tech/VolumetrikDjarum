@@ -839,31 +839,51 @@ function setupARButton() {
           console.log('[Volumetrik] Requesting AR session...');
 
           try {
-            // Attempt 1: Try with local-floor reference space (better tracking)
-            session = await navigator.xr.requestSession('immersive-ar', {
-              optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
-            });
-            console.log('[Volumetrik] AR session granted with local-floor');
-            // Use local-floor reference space for better tracking
-            renderer.xr.setReferenceSpaceType('local-floor');
-          } catch (e) {
-            console.warn('[Volumetrik] local-floor AR failed, trying viewer mode:', e.message);
+            // Get the body element for dom-overlay
+            const domOverlay = document.body;
 
-            // Attempt 2: Fallback to viewer reference space (more compatible)
+            // Attempt 1: Try with local-floor and dom-overlay (best experience)
             try {
-              session = await navigator.xr.requestSession('immersive-ar', {});
-              console.log('[Volumetrik] AR session granted with viewer mode');
-              // Use viewer reference space for devices that don't support local-floor
-              renderer.xr.setReferenceSpaceType('viewer');
-            } catch (e2) {
-              // Provide helpful error message
-              throw new Error('Your device reports AR support but cannot create an AR session. This may be due to:\n\n' +
-                '1. Missing or outdated ARCore/ARKit\n' +
-                '2. Camera permissions not granted\n' +
-                '3. Browser version too old (needs Chrome 79+)\n' +
-                '4. Device limitation\n\n' +
-                'Original error: ' + e2.message);
+              session = await navigator.xr.requestSession('immersive-ar', {
+                requiredFeatures: ['dom-overlay'],
+                domOverlay: { root: domOverlay },
+                optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
+              });
+              console.log('[Volumetrik] AR session granted with local-floor and dom-overlay');
+              renderer.xr.setReferenceSpaceType('local-floor');
+            } catch (e) {
+              console.warn('[Volumetrik] local-floor with dom-overlay failed, trying viewer mode:', e.message);
+
+              // Attempt 2: Fallback to viewer reference space with dom-overlay
+              try {
+                session = await navigator.xr.requestSession('immersive-ar', {
+                  requiredFeatures: ['dom-overlay'],
+                  domOverlay: { root: domOverlay }
+                });
+                console.log('[Volumetrik] AR session granted with viewer mode and dom-overlay');
+                renderer.xr.setReferenceSpaceType('viewer');
+              } catch (e2) {
+                console.warn('[Volumetrik] dom-overlay failed, trying without it:', e2.message);
+
+                // Attempt 3: Last resort - no dom-overlay (controls will be hidden)
+                try {
+                  session = await navigator.xr.requestSession('immersive-ar', {
+                    optionalFeatures: ['local-floor', 'bounded-floor']
+                  });
+                  console.log('[Volumetrik] AR session granted without dom-overlay');
+                  renderer.xr.setReferenceSpaceType('viewer');
+                } catch (e3) {
+                  throw new Error('Your device reports AR support but cannot create an AR session. This may be due to:\n\n' +
+                    '1. Missing or outdated ARCore/ARKit\n' +
+                    '2. Camera permissions not granted\n' +
+                    '3. Browser version too old (needs Chrome 79+)\n' +
+                    '4. Device limitation\n\n' +
+                    'Original error: ' + e3.message);
+                }
+              }
             }
+          } catch (error) {
+            throw error;
           }
 
           console.log('[Volumetrik] Setting up renderer for AR...');
@@ -904,32 +924,14 @@ function onARSessionStart() {
   const grid = scene.getObjectByName('grid');
   if (grid) grid.visible = false;
 
-  // Place the volumetric actor 1 meter in front of user
+  // Hide the original mesh - user will place it with SLAM
   if (currentSequence && currentSequence.isLoaded && currentSequence.model4D && currentSequence.model4D.mesh) {
     const mesh = currentSequence.model4D.mesh;
-
-    // Get camera position and direction
-    const cameraDirection = new THREE.Vector3();
-    camera.getWorldDirection(cameraDirection);
-
-    // Position 1 meter in front of camera, facing the user
-    const distance = 1.0; // 1 meter
-    mesh.position.copy(camera.position).add(cameraDirection.multiplyScalar(distance));
-    mesh.position.y = camera.position.y - 0.5; // Lower it a bit so it's not at eye level
-
-    // Make actor face the camera
-    mesh.lookAt(camera.position);
-
-    // Scale appropriately for AR
-    mesh.scale.set(0.3, 0.3, 0.3);
-
-    // Add to arPlacedMeshes so touch gestures can manipulate it
-    arPlacedMeshes.push(mesh);
-
-    console.log('[Volumetrik] AR: Positioned actor 1m in front of user');
+    mesh.visible = false; // Hide until placed with SLAM
+    console.log('[Volumetrik] AR: Original mesh hidden, waiting for SLAM placement');
   }
 
-  // Set up hit test reticle for placing additional copies
+  // Set up hit test reticle for SLAM placement
   reticle = new THREE.Mesh(
     new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
     new THREE.MeshBasicMaterial({ color: 0xffffff })
@@ -942,7 +944,7 @@ function onARSessionStart() {
   controller.addEventListener('select', onARSelect);
   scene.add(controller);
 
-  // Add touch gesture handlers for AR transform controls
+  // Add touch gesture handlers for AR transform controls and placement
   setupARGestureControls();
 
   // Change AR button to show "VR" to exit AR mode
@@ -1001,9 +1003,10 @@ function onARSessionEnd() {
   arPlacedMeshes = [];
   console.log('[Volumetrik] AR: Removed all placed meshes');
 
-  // Reset the original actor position and scale
+  // Reset the original actor position, scale, and visibility
   if (currentSequence && currentSequence.model4D && currentSequence.model4D.mesh) {
     const mesh = currentSequence.model4D.mesh;
+    mesh.visible = true; // Restore visibility
     mesh.position.set(0, 0, 0);
     mesh.rotation.set(0, 0, 0);
     mesh.scale.set(1, 1, 1);
@@ -1131,7 +1134,7 @@ function setupARGestureControls() {
 }
 
 function onARTouchStart(event) {
-  if (!isARMode || arPlacedMeshes.length === 0) return;
+  if (!isARMode) return;
 
   // Check if touch is on a UI control element - if so, don't manipulate AR object
   const touch = event.touches[0];
@@ -1149,21 +1152,31 @@ function onARTouchStart(event) {
     return; // Let the UI element handle the touch
   }
 
-  arTouchState.touches = Array.from(event.touches);
+  // If no meshes placed yet, this is a placement touch
+  if (arPlacedMeshes.length === 0 && reticle && reticle.visible) {
+    // Call AR select to place the mesh
+    onARSelect();
+    return;
+  }
 
-  if (event.touches.length === 1) {
-    // Single touch - rotation mode
-    arTouchState.isDragging = true;
-    arTouchState.selectedMesh = arPlacedMeshes[0];
-    event.preventDefault();
-  } else if (event.touches.length === 2) {
-    // Two fingers - scale and move mode
-    const dx = event.touches[0].clientX - event.touches[1].clientX;
-    const dy = event.touches[0].clientY - event.touches[1].clientY;
-    arTouchState.initialDistance = Math.sqrt(dx * dx + dy * dy);
-    arTouchState.initialScale = arPlacedMeshes[0].scale.x;
-    arTouchState.selectedMesh = arPlacedMeshes[0];
-    event.preventDefault();
+  // Otherwise, handle manipulation
+  if (arPlacedMeshes.length > 0) {
+    arTouchState.touches = Array.from(event.touches);
+
+    if (event.touches.length === 1) {
+      // Single touch - rotation mode
+      arTouchState.isDragging = true;
+      arTouchState.selectedMesh = arPlacedMeshes[0];
+      event.preventDefault();
+    } else if (event.touches.length === 2) {
+      // Two fingers - scale and move mode
+      const dx = event.touches[0].clientX - event.touches[1].clientX;
+      const dy = event.touches[0].clientY - event.touches[1].clientY;
+      arTouchState.initialDistance = Math.sqrt(dx * dx + dy * dy);
+      arTouchState.initialScale = arPlacedMeshes[0].scale.x;
+      arTouchState.selectedMesh = arPlacedMeshes[0];
+      event.preventDefault();
+    }
   }
 }
 
