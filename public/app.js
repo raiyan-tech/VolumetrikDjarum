@@ -37,6 +37,13 @@ const VIDEO_LIBRARY = {
     mobile: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/MARTIAL_ART/Dian_Take_02_30_00fps_FILTERED_MOBILE_720.4ds",
     position: [0, 0, 0]
   },
+  "music-greybeard": {
+    name: "Musisi",
+    desktop: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/MUSIC/Greybeard_60fps_MOBILE_720.4ds",
+    mobile: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/MUSIC/Greybeard_60fps_MOBILE_720.4ds",
+    position: [0, 0, 0],
+    hasAudio: true
+  },
   "martial-duel": {
     name: "Duel Panglipur",
     desktop: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/MARTIAL_ART/Duel_Take_02_30_00fps_FILTERED_DESKTOP_720.4ds",
@@ -1026,45 +1033,41 @@ function onARSessionEnd() {
 }
 
 function onARSelect() {
-  // Add null checks to prevent crashes
-  if (!reticle) {
-    console.warn('[Volumetrik] AR select: reticle not found');
-    return;
-  }
+  console.log('[Volumetrik] AR select triggered');
 
-  if (!currentSequence || !currentSequence.isLoaded) {
-    console.warn('[Volumetrik] AR select: sequence not loaded');
-    return;
-  }
-
-  if (!currentSequence.model4D || !currentSequence.model4D.mesh) {
-    console.warn('[Volumetrik] AR select: model4D mesh not available');
+  // Check if we have the mesh (even if not fully loaded)
+  if (!currentSequence || !currentSequence.model4D || !currentSequence.model4D.mesh) {
+    console.warn('[Volumetrik] AR select: mesh not available yet');
     return;
   }
 
   try {
-    // Remove any previously placed meshes - only allow one at a time
-    arPlacedMeshes.forEach((mesh) => {
-      scene.remove(mesh);
-      if (mesh.geometry) mesh.geometry.dispose();
-      if (mesh.material) {
-        if (Array.isArray(mesh.material)) {
-          mesh.material.forEach(mat => mat.dispose());
-        } else {
-          mesh.material.dispose();
-        }
-      }
-    });
-    arPlacedMeshes = [];
+    const mesh = currentSequence.model4D.mesh;
 
-    // Place new mesh at reticle position
-    const mesh = currentSequence.model4D.mesh.clone();
-    mesh.position.setFromMatrixPosition(reticle.matrix);
+    // If reticle exists and has a valid position, use it
+    if (reticle && reticle.matrix) {
+      mesh.position.setFromMatrixPosition(reticle.matrix);
+      console.log('[Volumetrik] AR: Placed at reticle position');
+    } else {
+      // Fallback: place 1m in front of camera
+      const cameraDirection = new THREE.Vector3();
+      camera.getWorldDirection(cameraDirection);
+      mesh.position.copy(camera.position).add(cameraDirection.multiplyScalar(1.0));
+      mesh.position.y = camera.position.y - 0.5;
+      console.log('[Volumetrik] AR: Placed at fallback position (1m in front)');
+    }
+
+    // Make mesh visible and set AR scale
+    mesh.visible = true;
     mesh.scale.set(0.3, 0.3, 0.3);
-    mesh.name = 'ar-placed-actor'; // Name it for easy identification
-    scene.add(mesh);
-    arPlacedMeshes.push(mesh);
-    console.log('[Volumetrik] AR: Placed actor at new position (replacing previous)');
+    mesh.lookAt(camera.position);
+
+    // Add to placed meshes for manipulation
+    if (!arPlacedMeshes.includes(mesh)) {
+      arPlacedMeshes.push(mesh);
+    }
+
+    console.log('[Volumetrik] AR: Actor placed and visible');
   } catch (error) {
     console.error('[Volumetrik] AR select failed:', error);
   }
@@ -1153,8 +1156,9 @@ function onARTouchStart(event) {
   }
 
   // If no meshes placed yet, this is a placement touch
-  if (arPlacedMeshes.length === 0 && reticle && reticle.visible) {
-    // Call AR select to place the mesh
+  if (arPlacedMeshes.length === 0) {
+    console.log('[Volumetrik] AR: Touch detected for placement, reticle visible:', reticle?.visible);
+    // Call AR select to place the mesh (even if reticle not visible yet)
     onARSelect();
     return;
   }
