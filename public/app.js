@@ -1,5 +1,4 @@
 import WEB4DS from "./web4dv/web4dvImporter.js";
-import { ARButton } from "./lib/ARButton.js";
 
 const VIDEO_LIBRARY = {
   "dance-nani": {
@@ -759,13 +758,33 @@ function setupARButton() {
       return;
     }
 
-    const arButton = ARButton.createButton(renderer, {
-      requiredFeatures: ['hit-test'],
-      optionalFeatures: ['dom-overlay'],
-      domOverlay: { root: document.body }
-    });
+    // Create custom circular AR button
+    const arButton = document.createElement('button');
     arButton.id = 'ar-button';
-    arButton.textContent = 'View in AR';
+    arButton.textContent = 'AR';
+    arButton.title = 'View in Augmented Reality';
+
+    // Add click handler to start/end AR session
+    arButton.addEventListener('click', () => {
+      if (!renderer.xr.isPresenting) {
+        // Start AR session
+        const sessionInit = {
+          requiredFeatures: ['hit-test'],
+          optionalFeatures: ['dom-overlay'],
+          domOverlay: { root: document.body }
+        };
+
+        navigator.xr.requestSession('immersive-ar', sessionInit).then((session) => {
+          renderer.xr.setSession(session);
+        }).catch((error) => {
+          console.warn('[Volumetrik] Failed to start AR session', error);
+        });
+      } else {
+        // End AR session
+        renderer.xr.getSession().end();
+      }
+    });
+
     arContainer.appendChild(arButton);
 
     renderer.xr.addEventListener('sessionstart', onARSessionStart);
