@@ -777,27 +777,38 @@ function setupARButton() {
       if (!renderer.xr.isPresenting) {
         // Start AR session
         try {
-          // Try with minimal features first for better compatibility
+          // Try AR session with progressive fallbacks for maximum compatibility
           let session;
+          let sessionConfig;
+
           try {
-            console.log('[Volumetrik] Requesting AR session with hit-test...');
-            session = await navigator.xr.requestSession('immersive-ar', {
-              requiredFeatures: ['hit-test']
-            });
+            // First try: Basic AR with no required features (most compatible)
+            console.log('[Volumetrik] Requesting basic AR session...');
+            sessionConfig = {};
+            session = await navigator.xr.requestSession('immersive-ar', sessionConfig);
+            console.log('[Volumetrik] Basic AR session granted');
           } catch (e) {
-            // Fallback: Try without any required features for maximum compatibility
-            console.log('[Volumetrik] Hit-test not supported, trying basic AR...');
-            session = await navigator.xr.requestSession('immersive-ar', {
-              optionalFeatures: ['local-floor', 'bounded-floor']
-            });
+            console.warn('[Volumetrik] Basic AR failed:', e.message);
+            // Second try: With optional features
+            try {
+              console.log('[Volumetrik] Trying AR with optional features...');
+              sessionConfig = {
+                optionalFeatures: ['local-floor']
+              };
+              session = await navigator.xr.requestSession('immersive-ar', sessionConfig);
+              console.log('[Volumetrik] AR session with features granted');
+            } catch (e2) {
+              console.error('[Volumetrik] All AR attempts failed:', e2.message);
+              throw e2;
+            }
           }
 
-          console.log('[Volumetrik] AR session granted, setting up...');
+          console.log('[Volumetrik] Setting up AR session...');
           await renderer.xr.setSession(session);
-          console.log('[Volumetrik] AR session active');
+          console.log('[Volumetrik] AR session active!');
         } catch (error) {
           console.error('[Volumetrik] Failed to start AR session:', error);
-          alert('Unable to start AR: ' + error.message);
+          alert('Unable to start AR on this device.\n\nError: ' + error.message + '\n\nYour device may not support WebXR AR, or the browser needs camera permissions.');
         }
       } else {
         // End AR session
