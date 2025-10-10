@@ -777,14 +777,21 @@ function setupARButton() {
       if (!renderer.xr.isPresenting) {
         // Start AR session
         try {
-          const sessionInit = {
-            requiredFeatures: ['hit-test'],
-            optionalFeatures: ['dom-overlay'],
-            domOverlay: { root: document.body }
-          };
+          // Try with minimal features first for better compatibility
+          let session;
+          try {
+            console.log('[Volumetrik] Requesting AR session with hit-test...');
+            session = await navigator.xr.requestSession('immersive-ar', {
+              requiredFeatures: ['hit-test']
+            });
+          } catch (e) {
+            // Fallback: Try without any required features for maximum compatibility
+            console.log('[Volumetrik] Hit-test not supported, trying basic AR...');
+            session = await navigator.xr.requestSession('immersive-ar', {
+              optionalFeatures: ['local-floor', 'bounded-floor']
+            });
+          }
 
-          console.log('[Volumetrik] Requesting AR session...');
-          const session = await navigator.xr.requestSession('immersive-ar', sessionInit);
           console.log('[Volumetrik] AR session granted, setting up...');
           await renderer.xr.setSession(session);
           console.log('[Volumetrik] AR session active');
@@ -855,10 +862,20 @@ function handleARHitTest(frame) {
   const session = renderer.xr.getSession();
 
   if (!hitTestSourceRequested) {
+    // Try to set up hit testing if available
     session.requestReferenceSpace('viewer').then((refSpace) => {
-      session.requestHitTestSource({ space: refSpace }).then((source) => {
-        hitTestSource = source;
-      });
+      if (session.requestHitTestSource) {
+        session.requestHitTestSource({ space: refSpace }).then((source) => {
+          hitTestSource = source;
+          console.log('[Volumetrik] Hit test source initialized');
+        }).catch((error) => {
+          console.warn('[Volumetrik] Hit test not available:', error);
+        });
+      } else {
+        console.warn('[Volumetrik] Hit test API not supported on this device');
+      }
+    }).catch((error) => {
+      console.warn('[Volumetrik] Could not get viewer reference space:', error);
     });
 
     session.addEventListener('end', () => {
@@ -870,14 +887,22 @@ function handleARHitTest(frame) {
   }
 
   if (hitTestSource && reticle) {
-    const hitTestResults = frame.getHitTestResults(hitTestSource);
-    if (hitTestResults.length) {
-      const hit = hitTestResults[0];
+    try {
+      const hitTestResults = frame.getHitTestResults(hitTestSource);
+      if (hitTestResults.length) {
+        const hit = hitTestResults[0];
+        reticle.visible = true;
+        reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
+      } else {
+        reticle.visible = false;
+      }
+    } catch (error) {
+      // Hit test failed, just show reticle at default position
       reticle.visible = true;
-      reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
-    } else {
-      reticle.visible = false;
     }
+  } else if (reticle && isARMode) {
+    // No hit test available, show reticle at a fixed position in front of camera
+    reticle.visible = true;
   }
 }
 
