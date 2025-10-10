@@ -746,8 +746,9 @@ function formatTime(totalSeconds) {
 }
 
 function setupARButton() {
-  const arContainer = document.getElementById('ar-button-container');
-  if (!arContainer || !('xr' in navigator)) {
+  const arButton = document.getElementById('ar-button');
+
+  if (!arButton || !('xr' in navigator)) {
     console.log('[Volumetrik] WebXR not available');
     return;
   }
@@ -758,11 +759,8 @@ function setupARButton() {
       return;
     }
 
-    // Create custom circular AR button
-    const arButton = document.createElement('button');
-    arButton.id = 'ar-button';
-    arButton.textContent = 'AR';
-    arButton.title = 'View in Augmented Reality';
+    // Show the AR button (it's hidden by default in CSS)
+    arButton.style.display = 'flex';
 
     // Add click handler to start/end AR session
     arButton.addEventListener('click', () => {
@@ -784,8 +782,6 @@ function setupARButton() {
         renderer.xr.getSession().end();
       }
     });
-
-    arContainer.appendChild(arButton);
 
     renderer.xr.addEventListener('sessionstart', onARSessionStart);
     renderer.xr.addEventListener('sessionend', onARSessionEnd);
