@@ -923,6 +923,9 @@ function onARSessionStart() {
     // Scale appropriately for AR
     mesh.scale.set(0.3, 0.3, 0.3);
 
+    // Add to arPlacedMeshes so touch gestures can manipulate it
+    arPlacedMeshes.push(mesh);
+
     console.log('[Volumetrik] AR: Positioned actor 1m in front of user');
   }
 
@@ -941,6 +944,13 @@ function onARSessionStart() {
 
   // Add touch gesture handlers for AR transform controls
   setupARGestureControls();
+
+  // Change AR button to show "VR" to exit AR mode
+  const arButton = document.getElementById('ar-button');
+  if (arButton) {
+    arButton.textContent = 'VR';
+    arButton.title = 'Exit AR and return to VR mode';
+  }
 }
 
 function onARSessionEnd() {
@@ -973,14 +983,18 @@ function onARSessionEnd() {
   }
 
   // Remove all placed AR meshes (clones) from the scene
+  // Note: The original mesh is in arPlacedMeshes, so we need to handle it carefully
   arPlacedMeshes.forEach((mesh) => {
-    scene.remove(mesh);
-    if (mesh.geometry) mesh.geometry.dispose();
-    if (mesh.material) {
-      if (Array.isArray(mesh.material)) {
-        mesh.material.forEach(mat => mat.dispose());
-      } else {
-        mesh.material.dispose();
+    // Only dispose clones, not the original mesh
+    if (mesh !== currentSequence?.model4D?.mesh) {
+      scene.remove(mesh);
+      if (mesh.geometry) mesh.geometry.dispose();
+      if (mesh.material) {
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach(mat => mat.dispose());
+        } else {
+          mesh.material.dispose();
+        }
       }
     }
   });
@@ -999,6 +1013,13 @@ function onARSessionEnd() {
   // Restore grid visibility
   const grid = scene.getObjectByName('grid');
   if (grid) grid.visible = true;
+
+  // Change button back to "AR"
+  const arButton = document.getElementById('ar-button');
+  if (arButton) {
+    arButton.textContent = 'AR';
+    arButton.title = 'Enter AR mode';
+  }
 }
 
 function onARSelect() {
@@ -1111,6 +1132,22 @@ function setupARGestureControls() {
 
 function onARTouchStart(event) {
   if (!isARMode || arPlacedMeshes.length === 0) return;
+
+  // Check if touch is on a UI control element - if so, don't manipulate AR object
+  const touch = event.touches[0];
+  const element = document.elementFromPoint(touch.clientX, touch.clientY);
+
+  // Allow touches on controls, buttons, sliders, etc.
+  if (element && (
+    element.tagName === 'BUTTON' ||
+    element.tagName === 'INPUT' ||
+    element.closest('#controls-container') ||
+    element.closest('#video-selector') ||
+    element.closest('.control-button') ||
+    element.id === 'ar-button'
+  )) {
+    return; // Let the UI element handle the touch
+  }
 
   arTouchState.touches = Array.from(event.touches);
 
