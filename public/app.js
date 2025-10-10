@@ -1,13 +1,13 @@
 import WEB4DS from "./web4dv/web4dvImporter.js";
 
-// Performance constants
-const CHUNK_SIZE_MOBILE = 3 * 1024 * 1024;      // 3MB for mobile
-const CHUNK_SIZE_DESKTOP = 10 * 1024 * 1024;    // 10MB for desktop
-const CHUNK_SIZE_DESKTOP_LARGE = 15 * 1024 * 1024; // 15MB for large desktop files
-const CACHE_SIZE_MOBILE = 15;                    // frames
-const CACHE_SIZE_DESKTOP = 40;                   // frames
-const CACHE_SIZE_DESKTOP_LARGE = 30;             // frames
-const PROGRESS_POLL_INTERVAL = 750;              // ms
+// Performance constants - optimized for better loading
+const CHUNK_SIZE_MOBILE = 5 * 1024 * 1024;      // 5MB for mobile (increased from 3MB)
+const CHUNK_SIZE_DESKTOP = 15 * 1024 * 1024;    // 15MB for desktop (increased from 10MB)
+const CHUNK_SIZE_DESKTOP_LARGE = 20 * 1024 * 1024; // 20MB for large desktop files (increased from 15MB)
+const CACHE_SIZE_MOBILE = 30;                    // frames (doubled from 15)
+const CACHE_SIZE_DESKTOP = 60;                   // frames (increased from 40)
+const CACHE_SIZE_DESKTOP_LARGE = 50;             // frames (increased from 30)
+const PROGRESS_POLL_INTERVAL = 500;              // ms (faster polling from 750ms)
 const RESIZE_DEBOUNCE_DELAY = 150;               // ms
 
 const VIDEO_LIBRARY = {
@@ -538,16 +538,16 @@ function createSequence(videoId, videoConfig, options = {}) {
     const isLargeFile = videoConfig.isLarge || false;
 
     if (IS_MOBILE) {
-      // Mobile: aggressive streaming, minimal cache
-      currentSequence.keepsChunksInCache(false);
+      // Mobile: improved caching for better performance
+      currentSequence.keepsChunksInCache(true); // Enable caching on mobile
       currentSequence.setChunkSize(CHUNK_SIZE_MOBILE);
       currentSequence.setMaxCacheSize(CACHE_SIZE_MOBILE);
       console.log('[Volumetrik] Mobile:', (CHUNK_SIZE_MOBILE / 1024 / 1024).toFixed(1), 'MB chunks,', CACHE_SIZE_MOBILE, 'frame cache');
     } else {
       // Desktop: larger chunks for better performance
       if (isLargeFile) {
-        // Large desktop files: bigger chunks, streaming mode
-        currentSequence.keepsChunksInCache(false);
+        // Large desktop files: bigger chunks, optimized caching
+        currentSequence.keepsChunksInCache(true); // Enable caching even for large files
         currentSequence.setChunkSize(CHUNK_SIZE_DESKTOP_LARGE);
         currentSequence.setMaxCacheSize(CACHE_SIZE_DESKTOP_LARGE);
         console.log('[Volumetrik] Desktop large:', (CHUNK_SIZE_DESKTOP_LARGE / 1024 / 1024).toFixed(1), 'MB chunks,', CACHE_SIZE_DESKTOP_LARGE, 'frame cache');
@@ -1138,19 +1138,29 @@ function onARTouchMove(event) {
 
     if (previousTouch) {
       const deltaX = touch.clientX - previousTouch.clientX;
-      arTouchState.selectedMesh.rotation.y -= deltaX * 0.01; // Adjust sensitivity
+      // Reduced sensitivity from 0.01 to 0.005 (half as sensitive)
+      arTouchState.selectedMesh.rotation.y -= deltaX * 0.005;
     }
 
     arTouchState.touches = Array.from(event.touches);
     event.preventDefault();
   } else if (event.touches.length === 2) {
-    // Pinch to scale
+    // Pinch to scale - with smoother sensitivity
     const dx = event.touches[0].clientX - event.touches[1].clientX;
     const dy = event.touches[0].clientY - event.touches[1].clientY;
     const distance = Math.sqrt(dx * dx + dy * dy);
 
-    const scale = (distance / arTouchState.initialDistance) * arTouchState.initialScale;
-    const clampedScale = Math.max(0.1, Math.min(2.0, scale)); // Clamp between 0.1x and 2x
+    // Add minimum distance threshold to prevent extreme scaling
+    if (arTouchState.initialDistance < 10) {
+      arTouchState.initialDistance = distance;
+      arTouchState.initialScale = arTouchState.selectedMesh.scale.x;
+      return;
+    }
+
+    const scaleFactor = distance / arTouchState.initialDistance;
+    const scale = scaleFactor * arTouchState.initialScale;
+    // Tighter clamp between 0.2x and 1.5x to prevent disappearing
+    const clampedScale = Math.max(0.2, Math.min(1.5, scale));
 
     arTouchState.selectedMesh.scale.set(clampedScale, clampedScale, clampedScale);
     event.preventDefault();
