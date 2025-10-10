@@ -89,6 +89,7 @@ let hasInitialized = false;
 let resizeTimeout = null;
 let arEventListenersAdded = false;
 let lastFrameUpdate = -1;
+let arPlacedMeshes = []; // Track meshes placed in AR mode
 
 function init() {
   if (hasInitialized) return;
@@ -821,9 +822,11 @@ function setupARButton() {
           console.log('[Volumetrik] Requesting AR session...');
 
           try {
-            // Attempt 1: Try with local-floor reference space
+            // Attempt 1: Try with local-floor reference space and camera passthrough
             session = await navigator.xr.requestSession('immersive-ar', {
-              optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
+              requiredFeatures: ['hit-test'],
+              optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'dom-overlay'],
+              domOverlay: { root: document.body }
             });
             console.log('[Volumetrik] AR session granted with optional features');
           } catch (e) {
@@ -875,6 +878,36 @@ function onARSessionStart() {
   console.log('[Volumetrik] AR session started');
   isARMode = true;
 
+  // Enable passthrough: make background transparent to show camera feed
+  scene.background = null;
+
+  // Hide the grid in AR mode
+  const grid = scene.getObjectByName('grid');
+  if (grid) grid.visible = false;
+
+  // Place the volumetric actor 1 meter in front of user
+  if (currentSequence && currentSequence.isLoaded && currentSequence.model4D && currentSequence.model4D.mesh) {
+    const mesh = currentSequence.model4D.mesh;
+
+    // Get camera position and direction
+    const cameraDirection = new THREE.Vector3();
+    camera.getWorldDirection(cameraDirection);
+
+    // Position 1 meter in front of camera, facing the user
+    const distance = 1.0; // 1 meter
+    mesh.position.copy(camera.position).add(cameraDirection.multiplyScalar(distance));
+    mesh.position.y = camera.position.y - 0.5; // Lower it a bit so it's not at eye level
+
+    // Make actor face the camera
+    mesh.lookAt(camera.position);
+
+    // Scale appropriately for AR
+    mesh.scale.set(0.3, 0.3, 0.3);
+
+    console.log('[Volumetrik] AR: Positioned actor 1m in front of user');
+  }
+
+  // Set up hit test reticle for placing additional copies
   reticle = new THREE.Mesh(
     new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
     new THREE.MeshBasicMaterial({ color: 0xffffff })
@@ -882,9 +915,6 @@ function onARSessionStart() {
   reticle.matrixAutoUpdate = false;
   reticle.visible = false;
   scene.add(reticle);
-
-  const grid = scene.getObjectByName('grid');
-  if (grid) grid.visible = false;
 
   const controller = renderer.xr.getController(0);
   controller.addEventListener('select', onARSelect);
@@ -897,11 +927,40 @@ function onARSessionEnd() {
   hitTestSourceRequested = false;
   hitTestSource = null;
 
+  // Restore scene background
+  scene.background = new THREE.Color(0x1a1a2e);
+
+  // Remove reticle
   if (reticle) {
     scene.remove(reticle);
     reticle = null;
   }
 
+  // Remove all placed AR meshes (clones) from the scene
+  arPlacedMeshes.forEach((mesh) => {
+    scene.remove(mesh);
+    if (mesh.geometry) mesh.geometry.dispose();
+    if (mesh.material) {
+      if (Array.isArray(mesh.material)) {
+        mesh.material.forEach(mat => mat.dispose());
+      } else {
+        mesh.material.dispose();
+      }
+    }
+  });
+  arPlacedMeshes = [];
+  console.log('[Volumetrik] AR: Removed all placed meshes');
+
+  // Reset the original actor position and scale
+  if (currentSequence && currentSequence.model4D && currentSequence.model4D.mesh) {
+    const mesh = currentSequence.model4D.mesh;
+    mesh.position.set(0, 0, 0);
+    mesh.rotation.set(0, 0, 0);
+    mesh.scale.set(1, 1, 1);
+    console.log('[Volumetrik] AR: Reset actor to default position');
+  }
+
+  // Restore grid visibility
   const grid = scene.getObjectByName('grid');
   if (grid) grid.visible = true;
 }
@@ -928,7 +987,8 @@ function onARSelect() {
     mesh.position.setFromMatrixPosition(reticle.matrix);
     mesh.scale.set(0.3, 0.3, 0.3);
     scene.add(mesh);
-    console.log('[Volumetrik] AR: Placed volumetric content in scene');
+    arPlacedMeshes.push(mesh); // Track this mesh for cleanup
+    console.log('[Volumetrik] AR: Placed volumetric content in scene (total placed: ' + arPlacedMeshes.length + ')');
   } catch (error) {
     console.error('[Volumetrik] AR select failed:', error);
   }
