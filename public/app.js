@@ -839,20 +839,18 @@ function setupARButton() {
           console.log('[Volumetrik] Requesting AR session...');
 
           try {
-            // Attempt 1: Try with local-floor reference space and camera passthrough
-            session = await navigator.xr.requestSession('immersive-ar', {
-              requiredFeatures: ['hit-test'],
-              optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'dom-overlay'],
-              domOverlay: { root: document.body }
-            });
-            console.log('[Volumetrik] AR session granted with optional features');
+            // Attempt 1: Minimal AR first (most compatible)
+            session = await navigator.xr.requestSession('immersive-ar', {});
+            console.log('[Volumetrik] Minimal AR session granted');
           } catch (e) {
-            console.warn('[Volumetrik] AR with features failed, trying minimal mode:', e.message);
+            console.warn('[Volumetrik] Minimal AR failed, trying with optional features:', e.message);
 
-            // Attempt 2: Minimal AR without any features
+            // Attempt 2: Try with optional features
             try {
-              session = await navigator.xr.requestSession('immersive-ar');
-              console.log('[Volumetrik] Minimal AR session granted');
+              session = await navigator.xr.requestSession('immersive-ar', {
+                optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
+              });
+              console.log('[Volumetrik] AR session granted with optional features');
             } catch (e2) {
               // Provide helpful error message
               throw new Error('Your device reports AR support but cannot create an AR session. This may be due to:\n\n' +
