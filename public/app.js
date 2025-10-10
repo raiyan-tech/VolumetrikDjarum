@@ -1,13 +1,13 @@
 import WEB4DS from "./web4dv/web4dvImporter.js";
 
-// Performance constants - optimized for better loading
-const CHUNK_SIZE_MOBILE = 5 * 1024 * 1024;      // 5MB for mobile (increased from 3MB)
-const CHUNK_SIZE_DESKTOP = 15 * 1024 * 1024;    // 15MB for desktop (increased from 10MB)
-const CHUNK_SIZE_DESKTOP_LARGE = 20 * 1024 * 1024; // 20MB for large desktop files (increased from 15MB)
-const CACHE_SIZE_MOBILE = 30;                    // frames (doubled from 15)
-const CACHE_SIZE_DESKTOP = 60;                   // frames (increased from 40)
-const CACHE_SIZE_DESKTOP_LARGE = 50;             // frames (increased from 30)
-const PROGRESS_POLL_INTERVAL = 500;              // ms (faster polling from 750ms)
+// Performance constants - balanced for stability and performance
+const CHUNK_SIZE_MOBILE = 4 * 1024 * 1024;      // 4MB for mobile
+const CHUNK_SIZE_DESKTOP = 12 * 1024 * 1024;    // 12MB for desktop
+const CHUNK_SIZE_DESKTOP_LARGE = 12 * 1024 * 1024; // 12MB for large files
+const CACHE_SIZE_MOBILE = 20;                    // 20 frames mobile cache
+const CACHE_SIZE_DESKTOP = 45;                   // 45 frames desktop cache
+const CACHE_SIZE_DESKTOP_LARGE = 35;             // 35 frames large file cache
+const PROGRESS_POLL_INTERVAL = 750;              // ms
 const RESIZE_DEBOUNCE_DELAY = 150;               // ms
 
 const VIDEO_LIBRARY = {
@@ -538,21 +538,21 @@ function createSequence(videoId, videoConfig, options = {}) {
     const isLargeFile = videoConfig.isLarge || false;
 
     if (IS_MOBILE) {
-      // Mobile: improved caching for better performance
-      currentSequence.keepsChunksInCache(true); // Enable caching on mobile
+      // Mobile: streaming mode to prevent memory issues
+      currentSequence.keepsChunksInCache(false);
       currentSequence.setChunkSize(CHUNK_SIZE_MOBILE);
       currentSequence.setMaxCacheSize(CACHE_SIZE_MOBILE);
       console.log('[Volumetrik] Mobile:', (CHUNK_SIZE_MOBILE / 1024 / 1024).toFixed(1), 'MB chunks,', CACHE_SIZE_MOBILE, 'frame cache');
     } else {
       // Desktop: larger chunks for better performance
       if (isLargeFile) {
-        // Large desktop files: bigger chunks, optimized caching
-        currentSequence.keepsChunksInCache(true); // Enable caching even for large files
+        // Large desktop files: streaming mode for memory safety
+        currentSequence.keepsChunksInCache(false);
         currentSequence.setChunkSize(CHUNK_SIZE_DESKTOP_LARGE);
         currentSequence.setMaxCacheSize(CACHE_SIZE_DESKTOP_LARGE);
         console.log('[Volumetrik] Desktop large:', (CHUNK_SIZE_DESKTOP_LARGE / 1024 / 1024).toFixed(1), 'MB chunks,', CACHE_SIZE_DESKTOP_LARGE, 'frame cache');
       } else {
-        // Normal desktop files: optimal chunks, full caching
+        // Normal desktop files: full caching for smooth playback
         currentSequence.keepsChunksInCache(true);
         currentSequence.setChunkSize(CHUNK_SIZE_DESKTOP);
         currentSequence.setMaxCacheSize(CACHE_SIZE_DESKTOP);
