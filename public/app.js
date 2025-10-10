@@ -3,35 +3,35 @@ import WEB4DS from "./web4dv/web4dvImporter.js";
 const VIDEO_LIBRARY = {
   "dance-nani": {
     name: "Topeng Losari",
-    desktop: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/DANCE/Nani_Take_02_30_00fps_FILTERED_DESKTOP_2880.4ds",
+    desktop: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/DANCE/Nani_Take_02_30_00fps_FILTERED_DESKTOP_720.4ds",
     mobile: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/DANCE/Nani_Take_02_30_00fps_FILTERED_MOBILE_720.4ds",
     position: [0, 0, 0]
   },
+  "dance-didik": {
+    name: "Dua Muka",
+    desktop: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/DANCE/Didik_Take_01_30_00fps_FILTERED_DESKTOP_720.4ds",
+    mobile: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/DANCE/Didik_Take_01_30_00fps_FILTERED_MOBILE_720-002.4ds",
+    position: [0, 0, 0],
+    isLarge: true,
+    maxWaitMs: 480000
+  },
   "martial-asep": {
     name: "Golok Panglipur",
-    desktop: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/MARTIAL_ART/Asep_Take_02_30_00fps_FILTERED_DESKTOP_2880.4ds",
+    desktop: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/MARTIAL_ART/Asep_Take_02_30_00fps_FILTERED_DESKTOP_720.4ds",
     mobile: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/MARTIAL_ART/Asep_Take_02_30_00fps_FILTERED_MOBILE_720.4ds",
     position: [0, 0, 0]
   },
   "martial-dian": {
     name: "Kipas Panglipur",
-    desktop: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/MARTIAL_ART/Dian_Take_02_30_00fps_FILTERED_DESKTOP_2880.4ds",
+    desktop: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/MARTIAL_ART/Dian_Take_02_30_00fps_FILTERED_DESKTOP_720.4ds",
     mobile: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/MARTIAL_ART/Dian_Take_02_30_00fps_FILTERED_MOBILE_720.4ds",
     position: [0, 0, 0]
   },
   "martial-duel": {
     name: "Duel Panglipur",
-    desktop: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/MARTIAL_ART/Duel_Take_02_30_00fps_FILTERED_DESKTOP_2880.4ds",
+    desktop: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/MARTIAL_ART/Duel_Take_02_30_00fps_FILTERED_DESKTOP_720.4ds",
     mobile: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/MARTIAL_ART/Duel_Take_02_30_00fps_FILTERED_MOBILE_720.4ds",
     position: [0, 0, 0]
-  },
-  "dance-didik": {
-    name: "Dua Muka",
-    desktop: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/DANCE/Didik_Take_01_30_00fps_FILTERED_DESKTOP_2880.4ds",
-    mobile: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/DANCE/Didik_Take_01_30_00fps_FILTERED_MOBILE_720-002.4ds",
-    position: [0, 0, 0],
-    isLarge: true,
-    maxWaitMs: 480000
   }
 };
 
