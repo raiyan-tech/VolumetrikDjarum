@@ -227,6 +227,15 @@ function setupEventListeners() {
   if (playBtn) {
     playBtn.addEventListener('click', () => {
       if (currentSequence) {
+        // Resume audio context on user interaction (required by browser autoplay policy)
+        if (currentSequence.audioCtx && currentSequence.audioCtx.state === 'suspended') {
+          currentSequence.audioCtx.resume().then(() => {
+            console.log('[Volumetrik] Audio context resumed');
+          }).catch(err => {
+            console.warn('[Volumetrik] Failed to resume audio context:', err);
+          });
+        }
+
         currentSequence.play(true);
         isPlaying = true;
       }
@@ -306,14 +315,15 @@ function setActiveVideoButton(videoId) {
 }
 
 function loadVideo(videoId, options = {}) {
-  // Exit AR mode if active before switching videos
-  if (isARMode && renderer && renderer.xr && renderer.xr.isPresenting) {
-    console.log('[Volumetrik] Exiting AR mode before switching videos');
-    try {
-      renderer.xr.getSession().end();
-    } catch (error) {
-      console.warn('[Volumetrik] Error ending AR session:', error);
-    }
+  // Clean up AR state when switching videos in AR mode
+  if (isARMode) {
+    console.log('[Volumetrik] Cleaning up AR state before switching videos');
+
+    // Clear placed meshes array (don't dispose, they're either the original or already disposed)
+    arPlacedMeshes = [];
+
+    // Don't exit AR session - let user stay in AR mode
+    console.log('[Volumetrik] Staying in AR mode, will hide new mesh for SLAM placement');
   }
 
   // If another load is already underway, cancel it so we can switch quickly
@@ -686,6 +696,15 @@ function finalizeLoad(videoId, videoConfig, startFrame) {
     currentSequence.pause();
     isPlaying = false;
   } else {
+    // Resume audio context before playing (required by browser autoplay policy)
+    if (currentSequence.audioCtx && currentSequence.audioCtx.state === 'suspended') {
+      currentSequence.audioCtx.resume().then(() => {
+        console.log('[Volumetrik] Audio context resumed for autoplay');
+      }).catch(err => {
+        console.warn('[Volumetrik] Failed to resume audio context for autoplay:', err);
+      });
+    }
+
     currentSequence.play(true);
     isPlaying = true;
   }
@@ -938,14 +957,19 @@ function onARSessionStart() {
     console.log('[Volumetrik] AR: Original mesh hidden, waiting for SLAM placement');
   }
 
-  // Set up hit test reticle for SLAM placement
-  reticle = new THREE.Mesh(
-    new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: 0xffffff })
-  );
-  reticle.matrixAutoUpdate = false;
-  reticle.visible = false;
-  scene.add(reticle);
+  // Set up hit test reticle for SLAM placement (only if not already exists)
+  if (!reticle) {
+    reticle = new THREE.Mesh(
+      new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    );
+    reticle.matrixAutoUpdate = false;
+    reticle.visible = false;
+    scene.add(reticle);
+    console.log('[Volumetrik] AR: Created reticle for SLAM placement');
+  } else {
+    console.log('[Volumetrik] AR: Reusing existing reticle');
+  }
 
   const controller = renderer.xr.getController(0);
   controller.addEventListener('select', onARSelect);
@@ -1041,9 +1065,15 @@ function onARSelect() {
     return;
   }
 
-  try {
-    const mesh = currentSequence.model4D.mesh;
+  const mesh = currentSequence.model4D.mesh;
 
+  // Only place if not already placed
+  if (arPlacedMeshes.includes(mesh)) {
+    console.log('[Volumetrik] AR: Mesh already placed, ignoring select');
+    return;
+  }
+
+  try {
     // If reticle exists and has a valid position, use it
     if (reticle && reticle.matrix) {
       mesh.position.setFromMatrixPosition(reticle.matrix);
@@ -1063,9 +1093,7 @@ function onARSelect() {
     mesh.lookAt(camera.position);
 
     // Add to placed meshes for manipulation
-    if (!arPlacedMeshes.includes(mesh)) {
-      arPlacedMeshes.push(mesh);
-    }
+    arPlacedMeshes.push(mesh);
 
     console.log('[Volumetrik] AR: Actor placed and visible');
   } catch (error) {
