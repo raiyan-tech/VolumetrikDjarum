@@ -748,44 +748,63 @@ function formatTime(totalSeconds) {
 function setupARButton() {
   const arButton = document.getElementById('ar-button');
 
-  if (!arButton || !('xr' in navigator)) {
-    console.log('[Volumetrik] WebXR not available');
+  if (!arButton) {
+    console.log('[Volumetrik] AR button not found');
+    return;
+  }
+
+  if (!('xr' in navigator)) {
+    console.log('[Volumetrik] WebXR not available in this browser');
+    arButton.style.display = 'none';
     return;
   }
 
   navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
     if (!supported) {
       console.log('[Volumetrik] AR not supported on this device');
+      arButton.style.display = 'none';
       return;
     }
 
+    console.log('[Volumetrik] AR is supported! Showing AR button');
     // Show the AR button (it's hidden by default in CSS)
     arButton.style.display = 'flex';
 
-    // Add click handler to start/end AR session
-    arButton.addEventListener('click', () => {
+    // Add click handler to start/end AR session (only once)
+    arButton.onclick = async () => {
+      console.log('[Volumetrik] AR button clicked');
+
       if (!renderer.xr.isPresenting) {
         // Start AR session
-        const sessionInit = {
-          requiredFeatures: ['hit-test'],
-          optionalFeatures: ['dom-overlay'],
-          domOverlay: { root: document.body }
-        };
+        try {
+          const sessionInit = {
+            requiredFeatures: ['hit-test'],
+            optionalFeatures: ['dom-overlay'],
+            domOverlay: { root: document.body }
+          };
 
-        navigator.xr.requestSession('immersive-ar', sessionInit).then((session) => {
-          renderer.xr.setSession(session);
-        }).catch((error) => {
-          console.warn('[Volumetrik] Failed to start AR session', error);
-        });
+          console.log('[Volumetrik] Requesting AR session...');
+          const session = await navigator.xr.requestSession('immersive-ar', sessionInit);
+          console.log('[Volumetrik] AR session granted, setting up...');
+          await renderer.xr.setSession(session);
+          console.log('[Volumetrik] AR session active');
+        } catch (error) {
+          console.error('[Volumetrik] Failed to start AR session:', error);
+          alert('Unable to start AR: ' + error.message);
+        }
       } else {
         // End AR session
+        console.log('[Volumetrik] Ending AR session');
         renderer.xr.getSession().end();
       }
-    });
+    };
 
     renderer.xr.addEventListener('sessionstart', onARSessionStart);
     renderer.xr.addEventListener('sessionend', onARSessionEnd);
-  }).catch((error) => console.warn('[Volumetrik] WebXR support check failed', error));
+  }).catch((error) => {
+    console.error('[Volumetrik] WebXR support check failed:', error);
+    arButton.style.display = 'none';
+  });
 }
 
 function onARSessionStart() {

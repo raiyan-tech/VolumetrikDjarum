@@ -434,14 +434,11 @@
         gap: 6px;
       }
 
-      .branding .contact:last-child {
-        display: none;
-      }
-
       .video-selector {
         top: calc(env(safe-area-inset-top, 12px) + 110px);  /* Increased to avoid overlap with branding */
         width: calc(100vw - 24px);
-        left: 12px;
+        left: 50%;
+        transform: translateX(-50%);
         flex-wrap: nowrap;
         overflow-x: auto;
         gap: 5px;  /* Reduced from 6px */
@@ -473,7 +470,7 @@
 
       .timeline {
         width: calc(100vw - 48px);
-        bottom: calc(env(safe-area-inset-bottom, 24px) + 160px);
+        bottom: calc(env(safe-area-inset-bottom, 24px) + 180px);
       }
 
       .progress-bar {
