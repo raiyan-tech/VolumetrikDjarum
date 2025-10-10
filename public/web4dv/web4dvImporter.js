@@ -340,6 +340,10 @@ export default class WEB4DS {
     if (this.currentFrame === -1) this.pauseAudio()
     else if (this.isAudioplaying === false) this.playAudio()
 
+    if (!this.currentMesh) {
+      return
+    }
+
     /* update buffers for rendering */
     this.updateSequenceMesh(this.currentMesh)
   }

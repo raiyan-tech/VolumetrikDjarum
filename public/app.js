@@ -1,5 +1,15 @@
 import WEB4DS from "./web4dv/web4dvImporter.js";
 
+// Performance constants
+const CHUNK_SIZE_MOBILE = 3 * 1024 * 1024;      // 3MB for mobile
+const CHUNK_SIZE_DESKTOP = 10 * 1024 * 1024;    // 10MB for desktop
+const CHUNK_SIZE_DESKTOP_LARGE = 15 * 1024 * 1024; // 15MB for large desktop files
+const CACHE_SIZE_MOBILE = 15;                    // frames
+const CACHE_SIZE_DESKTOP = 40;                   // frames
+const CACHE_SIZE_DESKTOP_LARGE = 30;             // frames
+const PROGRESS_POLL_INTERVAL = 750;              // ms
+const RESIZE_DEBOUNCE_DELAY = 150;               // ms
+
 const VIDEO_LIBRARY = {
   "dance-nani": {
     name: "Topeng Losari",
@@ -76,6 +86,9 @@ let frameBufferedEl;
 let instructionsEl;
 
 let hasInitialized = false;
+let resizeTimeout = null;
+let arEventListenersAdded = false;
+let lastFrameUpdate = -1;
 
 function init() {
   if (hasInitialized) return;
@@ -103,13 +116,11 @@ function init() {
   frameBufferedEl = document.getElementById('frame-buffered');
   instructionsEl = document.getElementById('instructions');
 
+  // Combined iteration - performance optimization
   Object.keys(VIDEO_LIBRARY).forEach((id) => {
     videoProgressState[id] = { status: 'idle', decoded: 0, total: 0 };
-    if (progressDisplays[id]) {
-      progressDisplays[id].textContent = '--';
-    }
+    updateVideoProgressDisplay(id);
   });
-  Object.keys(VIDEO_LIBRARY).forEach((id) => updateVideoProgressDisplay(id));
 
   canvas = document.getElementById('canvas4D');
   if (!canvas) {
@@ -280,10 +291,32 @@ function setActiveVideoButton(videoId) {
 }
 
 function loadVideo(videoId, options = {}) {
-  // Prevent rapid switching - ignore if already loading
+  // If another load is already underway, cancel it so we can switch quickly
   if (isLoadingVideo) {
-    console.warn('[Volumetrik] Already loading a video, please wait');
-    return;
+    console.log('[Volumetrik] Cancelling in-progress load for', currentVideoId);
+
+    // Clear all timers to prevent race conditions
+    if (progressTimer) {
+      clearInterval(progressTimer);
+      progressTimer = null;
+    }
+    if (loadingTimeout) {
+      clearTimeout(loadingTimeout);
+      loadingTimeout = null;
+    }
+
+    // Destroy current sequence safely
+    if (currentSequence) {
+      try {
+        currentSequence.destroy();
+      } catch (destroyError) {
+        console.warn('[Volumetrik] Error destroying sequence during cancel', destroyError);
+      } finally {
+        currentSequence = null;
+      }
+    }
+
+    isLoadingVideo = false;
   }
 
   const fallbackId = Object.keys(VIDEO_LIBRARY)[0];
@@ -489,23 +522,23 @@ function createSequence(videoId, videoConfig, options = {}) {
     if (IS_MOBILE) {
       // Mobile: aggressive streaming, minimal cache
       currentSequence.keepsChunksInCache(false);
-      currentSequence.setChunkSize(3000000);  // 3MB chunks for mobile
-      currentSequence.setMaxCacheSize(15);    // Cache only 15 frames
-      console.log('[Volumetrik] Mobile: 3MB chunks, 15 frame cache');
+      currentSequence.setChunkSize(CHUNK_SIZE_MOBILE);
+      currentSequence.setMaxCacheSize(CACHE_SIZE_MOBILE);
+      console.log('[Volumetrik] Mobile:', (CHUNK_SIZE_MOBILE / 1024 / 1024).toFixed(1), 'MB chunks,', CACHE_SIZE_MOBILE, 'frame cache');
     } else {
       // Desktop: larger chunks for better performance
       if (isLargeFile) {
         // Large desktop files: bigger chunks, streaming mode
         currentSequence.keepsChunksInCache(false);
-        currentSequence.setChunkSize(15000000); // 15MB chunks for large desktop files
-        currentSequence.setMaxCacheSize(30);    // Cache 30 frames
-        console.log('[Volumetrik] Desktop large file: 15MB chunks, 30 frame cache, streaming');
+        currentSequence.setChunkSize(CHUNK_SIZE_DESKTOP_LARGE);
+        currentSequence.setMaxCacheSize(CACHE_SIZE_DESKTOP_LARGE);
+        console.log('[Volumetrik] Desktop large:', (CHUNK_SIZE_DESKTOP_LARGE / 1024 / 1024).toFixed(1), 'MB chunks,', CACHE_SIZE_DESKTOP_LARGE, 'frame cache');
       } else {
         // Normal desktop files: optimal chunks, full caching
         currentSequence.keepsChunksInCache(true);
-        currentSequence.setChunkSize(10000000); // 10MB chunks
-        currentSequence.setMaxCacheSize(40);    // Cache 40 frames
-        console.log('[Volumetrik] Desktop normal: 10MB chunks, 40 frame cache, full caching');
+        currentSequence.setChunkSize(CHUNK_SIZE_DESKTOP);
+        currentSequence.setMaxCacheSize(CACHE_SIZE_DESKTOP);
+        console.log('[Volumetrik] Desktop normal:', (CHUNK_SIZE_DESKTOP / 1024 / 1024).toFixed(1), 'MB chunks,', CACHE_SIZE_DESKTOP, 'frame cache');
       }
     }
 
@@ -527,9 +560,12 @@ function createSequence(videoId, videoConfig, options = {}) {
     currentSequence.load(true, false);
 
     progressTimer = setInterval(() => {
+      // Safety check - clear if sequence destroyed
       if (!currentSequence) {
-        clearInterval(progressTimer);
-        progressTimer = null;
+        if (progressTimer) {
+          clearInterval(progressTimer);
+          progressTimer = null;
+        }
         isLoadingVideo = false;
         return;
       }
@@ -538,9 +574,12 @@ function createSequence(videoId, videoConfig, options = {}) {
       const total = currentSequence.sequenceTotalLength || 0;
       setVideoProgress(videoId, { status: 'loading', decoded, total });
 
+      // Stop polling when loaded - performance optimization
       if (currentSequence.isLoaded) {
-        clearInterval(progressTimer);
-        progressTimer = null;
+        if (progressTimer) {
+          clearInterval(progressTimer);
+          progressTimer = null;
+        }
         finalizeLoad(videoId, videoConfig, startFrame);
         return;
       }
@@ -548,7 +587,7 @@ function createSequence(videoId, videoConfig, options = {}) {
       const elapsedMs = (performance.now ? performance.now() : Date.now()) - loadStart;
       const elapsedSec = Math.max(0, Math.floor(elapsedMs / 1000));
       renderLoadingProgress({ decoded, total, elapsedSec, waitHint });
-    }, 750);
+    }, PROGRESS_POLL_INTERVAL);
 
     loadingTimeout = setTimeout(() => {
       if (!currentSequence || currentSequence.isLoaded) {
@@ -767,7 +806,6 @@ function setupARButton() {
     }
 
     console.log('[Volumetrik] AR is supported! Showing AR button');
-    // Show the AR button (it's hidden by default in CSS)
     arButton.style.display = 'flex';
 
     // Add click handler to start/end AR session (only once)
@@ -777,38 +815,41 @@ function setupARButton() {
       if (!renderer.xr.isPresenting) {
         // Start AR session
         try {
-          // Try AR session with progressive fallbacks for maximum compatibility
           let session;
-          let sessionConfig;
+
+          // Try basic AR session with proper reference space handling
+          console.log('[Volumetrik] Requesting AR session...');
 
           try {
-            // First try: Basic AR with no required features (most compatible)
-            console.log('[Volumetrik] Requesting basic AR session...');
-            sessionConfig = {};
-            session = await navigator.xr.requestSession('immersive-ar', sessionConfig);
-            console.log('[Volumetrik] Basic AR session granted');
+            // Attempt 1: Try with local-floor reference space
+            session = await navigator.xr.requestSession('immersive-ar', {
+              optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
+            });
+            console.log('[Volumetrik] AR session granted with optional features');
           } catch (e) {
-            console.warn('[Volumetrik] Basic AR failed:', e.message);
-            // Second try: With optional features
+            console.warn('[Volumetrik] AR with features failed, trying minimal mode:', e.message);
+
+            // Attempt 2: Minimal AR without any features
             try {
-              console.log('[Volumetrik] Trying AR with optional features...');
-              sessionConfig = {
-                optionalFeatures: ['local-floor']
-              };
-              session = await navigator.xr.requestSession('immersive-ar', sessionConfig);
-              console.log('[Volumetrik] AR session with features granted');
+              session = await navigator.xr.requestSession('immersive-ar');
+              console.log('[Volumetrik] Minimal AR session granted');
             } catch (e2) {
-              console.error('[Volumetrik] All AR attempts failed:', e2.message);
-              throw e2;
+              // Provide helpful error message
+              throw new Error('Your device reports AR support but cannot create an AR session. This may be due to:\n\n' +
+                '1. Missing or outdated ARCore/ARKit\n' +
+                '2. Camera permissions not granted\n' +
+                '3. Browser version too old (needs Chrome 79+)\n' +
+                '4. Device limitation\n\n' +
+                'Original error: ' + e2.message);
             }
           }
 
-          console.log('[Volumetrik] Setting up AR session...');
+          console.log('[Volumetrik] Setting up renderer for AR...');
           await renderer.xr.setSession(session);
           console.log('[Volumetrik] AR session active!');
         } catch (error) {
-          console.error('[Volumetrik] Failed to start AR session:', error);
-          alert('Unable to start AR on this device.\n\nError: ' + error.message + '\n\nYour device may not support WebXR AR, or the browser needs camera permissions.');
+          console.error('[Volumetrik] AR session failed:', error);
+          alert('Unable to start AR\n\n' + error.message);
         }
       } else {
         // End AR session
@@ -817,8 +858,13 @@ function setupARButton() {
       }
     };
 
-    renderer.xr.addEventListener('sessionstart', onARSessionStart);
-    renderer.xr.addEventListener('sessionend', onARSessionEnd);
+    // Add event listeners only once - prevent duplicates
+    if (!arEventListenersAdded) {
+      renderer.xr.addEventListener('sessionstart', onARSessionStart);
+      renderer.xr.addEventListener('sessionend', onARSessionEnd);
+      arEventListenersAdded = true;
+      console.log('[Volumetrik] AR event listeners registered');
+    }
   }).catch((error) => {
     console.error('[Volumetrik] WebXR support check failed:', error);
     arButton.style.display = 'none';
@@ -861,11 +907,31 @@ function onARSessionEnd() {
 }
 
 function onARSelect() {
-  if (!reticle || !currentSequence || !currentSequence.model4D) return;
-  const mesh = currentSequence.model4D.mesh.clone();
-  mesh.position.setFromMatrixPosition(reticle.matrix);
-  mesh.scale.set(0.3, 0.3, 0.3);
-  scene.add(mesh);
+  // Add null checks to prevent crashes
+  if (!reticle) {
+    console.warn('[Volumetrik] AR select: reticle not found');
+    return;
+  }
+
+  if (!currentSequence || !currentSequence.isLoaded) {
+    console.warn('[Volumetrik] AR select: sequence not loaded');
+    return;
+  }
+
+  if (!currentSequence.model4D || !currentSequence.model4D.mesh) {
+    console.warn('[Volumetrik] AR select: model4D mesh not available');
+    return;
+  }
+
+  try {
+    const mesh = currentSequence.model4D.mesh.clone();
+    mesh.position.setFromMatrixPosition(reticle.matrix);
+    mesh.scale.set(0.3, 0.3, 0.3);
+    scene.add(mesh);
+    console.log('[Volumetrik] AR: Placed volumetric content in scene');
+  } catch (error) {
+    console.error('[Volumetrik] AR select failed:', error);
+  }
 }
 
 function handleARHitTest(frame) {
@@ -919,9 +985,18 @@ function handleARHitTest(frame) {
 
 function onWindowResize() {
   if (!camera || !renderer) return;
-  camera.aspect = container.offsetWidth / container.offsetHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(container.offsetWidth, container.offsetHeight);
+
+  // Debounce resize to avoid excessive calls
+  if (resizeTimeout) {
+    clearTimeout(resizeTimeout);
+  }
+
+  resizeTimeout = setTimeout(() => {
+    camera.aspect = container.offsetWidth / container.offsetHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.offsetWidth, container.offsetHeight);
+    resizeTimeout = null;
+  }, RESIZE_DEBOUNCE_DELAY);
 }
 
 function animate() {
@@ -943,6 +1018,12 @@ function updatePlaybackUI() {
 
   const currentFrame = currentSequence.currentFrame || 0;
   const totalFrames = currentSequence.sequenceTotalLength || 0;
+
+  // Performance optimization: only update if frame actually changed
+  if (currentFrame === lastFrameUpdate) {
+    return;
+  }
+  lastFrameUpdate = currentFrame;
 
   if (frameCurrentEl) frameCurrentEl.textContent = currentFrame;
   if (frameTotalEl) frameTotalEl.textContent = totalFrames;
