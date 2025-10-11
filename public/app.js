@@ -1087,15 +1087,15 @@ function onARSelect() {
       console.log('[Volumetrik] AR: Placed at fallback position (1m in front)');
     }
 
-    // Make mesh visible and set AR scale
+    // Make mesh visible and set AR scale (1.5 = human scale, 5x bigger than 0.3)
     mesh.visible = true;
-    mesh.scale.set(0.3, 0.3, 0.3);
+    mesh.scale.set(1.5, 1.5, 1.5);
     mesh.lookAt(camera.position);
 
     // Add to placed meshes for manipulation
     arPlacedMeshes.push(mesh);
 
-    console.log('[Volumetrik] AR: Actor placed and visible');
+    console.log('[Volumetrik] AR: Actor placed at human scale (1.5x)');
   } catch (error) {
     console.error('[Volumetrik] AR select failed:', error);
   }
@@ -1193,12 +1193,14 @@ function onARTouchStart(event) {
 
   // Otherwise, handle manipulation
   if (arPlacedMeshes.length > 0) {
+    console.log('[Volumetrik] AR: Touch for manipulation, fingers:', event.touches.length);
     arTouchState.touches = Array.from(event.touches);
 
     if (event.touches.length === 1) {
       // Single touch - rotation mode
       arTouchState.isDragging = true;
       arTouchState.selectedMesh = arPlacedMeshes[0];
+      console.log('[Volumetrik] AR: Single touch rotation mode activated');
       event.preventDefault();
     } else if (event.touches.length === 2) {
       // Two fingers - scale and move mode
@@ -1207,13 +1209,18 @@ function onARTouchStart(event) {
       arTouchState.initialDistance = Math.sqrt(dx * dx + dy * dy);
       arTouchState.initialScale = arPlacedMeshes[0].scale.x;
       arTouchState.selectedMesh = arPlacedMeshes[0];
+      console.log('[Volumetrik] AR: Pinch scale mode activated, initial distance:', arTouchState.initialDistance);
       event.preventDefault();
     }
   }
 }
 
 function onARTouchMove(event) {
-  if (!isARMode || !arTouchState.selectedMesh) return;
+  if (!isARMode) return;
+  if (!arTouchState.selectedMesh) {
+    console.log('[Volumetrik] AR: TouchMove but no selected mesh');
+    return;
+  }
 
   if (event.touches.length === 1 && arTouchState.isDragging) {
     // Single finger drag - rotate the actor around Y axis
@@ -1224,6 +1231,7 @@ function onARTouchMove(event) {
       const deltaX = touch.clientX - previousTouch.clientX;
       // Reduced sensitivity from 0.01 to 0.005 (half as sensitive)
       arTouchState.selectedMesh.rotation.y -= deltaX * 0.005;
+      console.log('[Volumetrik] AR: Rotating, deltaX:', deltaX, 'rotation.y:', arTouchState.selectedMesh.rotation.y);
     }
 
     arTouchState.touches = Array.from(event.touches);
@@ -1243,8 +1251,8 @@ function onARTouchMove(event) {
 
     const scaleFactor = distance / arTouchState.initialDistance;
     const scale = scaleFactor * arTouchState.initialScale;
-    // Tighter clamp between 0.2x and 1.5x to prevent disappearing
-    const clampedScale = Math.max(0.2, Math.min(1.5, scale));
+    // Allow scaling from 0.5x to 3.0x for proper human scale adjustment
+    const clampedScale = Math.max(0.5, Math.min(3.0, scale));
 
     arTouchState.selectedMesh.scale.set(clampedScale, clampedScale, clampedScale);
     event.preventDefault();
