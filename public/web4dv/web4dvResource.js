@@ -9,8 +9,11 @@
 // Copyright: 4D View Solutions SAS
 // Authors: M.Adam & T.Groubet
 //
+// Modified: HTTP/3/QUIC optimization with parallel Range requests
 //
 // **********************************************************
+
+import ParallelRangeManager from './ParallelRangeManager.js'
 
 class ChunkSerialized {
   constructor() {
@@ -129,7 +132,7 @@ class BlocInfo {
 
 export default class ResourceManagerXHR {
   constructor() {
-    this._internalCacheSize = 40000000  // 40MB - increased from 20MB for better large file streaming
+    this._internalCacheSize = 2000000  // 2MB - reduced for smaller parallel chunks (HTTP/3 optimization)
 
     this._sequenceInfo = {
       NbFrames: 0,
@@ -160,6 +163,11 @@ export default class ResourceManagerXHR {
     this._isDownloading = false
 
     this._file4ds = ''
+
+    // HTTP/3/QUIC optimization: Parallel Range request manager
+    this._parallelManager = null
+    this._useParallelDownloads = true
+    this._maxParallelRequests = 3
   }
 
   Open(callbackFunction) {
@@ -258,10 +266,85 @@ export default class ResourceManagerXHR {
       this._currentBlocIndex = this._firstBlocIndex
     }
 
-    let memorySize = (pos1 - pos0)
+    const totalSize = pos1 - pos0
+    const parent = this
 
+    // HTTP/3 Optimization: Use parallel downloads for better bandwidth utilization
+    if (this._useParallelDownloads && totalSize > 1024 * 1024) {
+      this._downloadInParallel(pos0, pos1, totalSize)
+    } else {
+      // Fallback to single request for small chunks
+      this._downloadSingleChunk(pos0, pos1, totalSize)
+    }
+  }
+
+  _downloadInParallel(pos0, pos1, totalSize) {
+    const parent = this
+    const chunkSize = Math.min(1024 * 1024, Math.ceil(totalSize / this._maxParallelRequests)) // ~1MB chunks
+    const chunks = []
+    let currentPos = pos0
+
+    // Split into parallel chunks
+    let chunkId = 0
+    while (currentPos < pos1) {
+      const endPos = Math.min(currentPos + chunkSize, pos1)
+      chunks.push({
+        id: chunkId++,
+        start: currentPos,
+        end: endPos - 1 // Range header is inclusive
+      })
+      currentPos = endPos
+    }
+
+    console.log('[ResourceManager] Downloading', chunks.length, 'chunks in parallel',
+                'Total:', (totalSize / 1024).toFixed(1), 'KB')
+
+    // Initialize parallel manager
+    if (this._parallelManager) {
+      this._parallelManager.abort()
+    }
+
+    this._parallelManager = new ParallelRangeManager({
+      url: this._file4ds,
+      maxConcurrentRequests: this._maxParallelRequests,
+      onChunkReceived: (chunkId, data) => {
+        // Store chunk for reassembly
+        chunks[chunkId].data = data
+      },
+      onComplete: () => {
+        // Reassemble all chunks in order
+        const totalLength = chunks.reduce((sum, chunk) => sum + chunk.data.byteLength, 0)
+        const combinedBuffer = new ArrayBuffer(totalLength)
+        const combinedView = new Uint8Array(combinedBuffer)
+
+        let offset = 0
+        chunks.forEach(chunk => {
+          combinedView.set(new Uint8Array(chunk.data), offset)
+          offset += chunk.data.byteLength
+        })
+
+        console.log('[ResourceManager] Reassembled', chunks.length, 'chunks,',
+                    'Total:', (totalLength / 1024).toFixed(1), 'KB')
+
+        // Process combined buffer
+        parent._processChunkData(combinedBuffer, totalLength)
+        parent._isDownloading = false
+      },
+      onError: (chunkId, error) => {
+        console.error('[ResourceManager] Chunk', chunkId, 'failed:', error)
+        // Continue despite error - other chunks may succeed
+      }
+    })
+
+    // Enqueue all chunks
+    chunks.forEach(chunk => {
+      this._parallelManager.enqueueRangeRequest(chunk.start, chunk.end, chunk.id)
+    })
+  }
+
+  _downloadSingleChunk(pos0, pos1, totalSize) {
+    const parent = this
     const xhr = this.SetXHR(pos0, pos1)
-    // console.log(`request range ${pos0} - ${pos1}`)
 
     if (!xhr) {
       console.error('[ResourceManager] Failed to create XHR for getBunchOfChunks')
@@ -269,44 +352,51 @@ export default class ResourceManagerXHR {
       return
     }
 
-    const parent = this
-
     xhr.onload = function () {
-      if (xhr.status === 206) {
-        const dv = new DataView(xhr.response)
-        let dataPtr = 0
-        while (memorySize > 0) {
-          // extract a chunk
-
-          const chunkSize = dv.getUint32(dataPtr + 5, true)
-
-          const cdataArray = new Uint8Array(xhr.response.slice(dataPtr + 9, dataPtr + 9 + chunkSize), 0, chunkSize)
-
-          // const chunk4D = new ModuleInstance.Chunk(dv.getUint8(dataPtr, true), dv.getUint16(dataPtr + 1, true), dv.getUint16(dataPtr + 3, true), chunkSize, cdataArray)
-          const chunk4D = new ChunkSerialized()
-          chunk4D.type = dv.getUint8(dataPtr, true)
-          chunk4D.codec = dv.getUint16(dataPtr + 1, true)
-          chunk4D.version = dv.getUint16(dataPtr + 3, true)
-          chunk4D.size = chunkSize
-          chunk4D.data = cdataArray
-
-          dataPtr += 9 + chunkSize
-          memorySize -= (9 + chunkSize)
-
-          if (chunk4D.type === 10 || chunk4D.type === 11 || chunk4D.type === 12 || chunk4D.type === 14) {
-            if (!Decoder4D._keepChunksInCache || Decoder4D._chunks4D.length < parent._sequenceInfo.NbFrames * 2) {
-              Decoder4D._chunks4D.push(chunk4D)
-            }
-          }
-        }
-
-        // Chunks downloaded
+      if (xhr.status === 206 || xhr.status === 200) {
+        parent._processChunkData(xhr.response, totalSize)
         parent._isDownloading = false
       } else {
         console.log(`xhr status == ${xhr.status}`)
+        parent._isDownloading = false
       }
     }
+
+    xhr.onerror = function() {
+      console.error('[ResourceManager] XHR error in single chunk download')
+      parent._isDownloading = false
+    }
+
     xhr.send()
+  }
+
+  _processChunkData(buffer, memorySize) {
+    const dv = new DataView(buffer)
+    let dataPtr = 0
+    const parent = this
+
+    while (memorySize > 0) {
+      // extract a chunk
+      const chunkSize = dv.getUint32(dataPtr + 5, true)
+
+      const cdataArray = new Uint8Array(buffer.slice(dataPtr + 9, dataPtr + 9 + chunkSize), 0, chunkSize)
+
+      const chunk4D = new ChunkSerialized()
+      chunk4D.type = dv.getUint8(dataPtr, true)
+      chunk4D.codec = dv.getUint16(dataPtr + 1, true)
+      chunk4D.version = dv.getUint16(dataPtr + 3, true)
+      chunk4D.size = chunkSize
+      chunk4D.data = cdataArray
+
+      dataPtr += 9 + chunkSize
+      memorySize -= (9 + chunkSize)
+
+      if (chunk4D.type === 10 || chunk4D.type === 11 || chunk4D.type === 12 || chunk4D.type === 14) {
+        if (!Decoder4D._keepChunksInCache || Decoder4D._chunks4D.length < parent._sequenceInfo.NbFrames * 2) {
+          Decoder4D._chunks4D.push(chunk4D)
+        }
+      }
+    }
   }
 
   reinitResources() {
@@ -350,6 +440,46 @@ export default class ResourceManagerXHR {
       this._currentBlocIndex = i - 1
     } else {
       this._currentBlocIndex = 0
+    }
+
+    // HTTP/3 Optimization: Prefetch next chunk for smoother seeking
+    this._prefetchNextChunk()
+  }
+
+  _prefetchNextChunk() {
+    // Prefetch the next chunk to improve seeking performance
+    if (!this._isInitialized || this._isDownloading) {
+      return
+    }
+
+    const nextBlocIndex = this._currentBlocIndex + 1
+    if (nextBlocIndex > this._lastBlocIndex) {
+      return // No next chunk to prefetch
+    }
+
+    const pos0 = this._KFPositions[nextBlocIndex]
+    let pos1 = pos0
+
+    // Calculate next chunk size (smaller prefetch)
+    const prefetchSize = Math.min(this._internalCacheSize / 2, 1024 * 1024) // Max 1MB prefetch
+    while ((pos1 - pos0) < prefetchSize && nextBlocIndex < this._lastBlocIndex) {
+      pos1 = this._KFPositions[nextBlocIndex + 1]
+      break
+    }
+
+    console.log('[ResourceManager] Prefetching next chunk:', nextBlocIndex,
+                'Range:', pos0, '-', pos1, 'Size:', ((pos1 - pos0) / 1024).toFixed(1), 'KB')
+
+    // Send prefetch message to Service Worker
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'PREFETCH_CHUNK',
+        url: this._file4ds,
+        range: {
+          start: pos0,
+          end: pos1
+        }
+      })
     }
   }
 
@@ -524,6 +654,13 @@ export default class ResourceManagerXHR {
     this._pointerToSequenceInfo = 0
     this._pointerToBlocIndex = 0
     this._pointerToTrackIndex = 0
+
+    // Clean up parallel manager
+    if (this._parallelManager) {
+      this._parallelManager.abort()
+      this._parallelManager = null
+    }
+
     console.log('[ResourceManager] Reset complete')
   }
 }

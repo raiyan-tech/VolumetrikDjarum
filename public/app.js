@@ -1,14 +1,15 @@
 import WEB4DS from "./web4dv/web4dvImporter.js";
 
-// Performance constants - balanced for stability and performance
-const CHUNK_SIZE_MOBILE = 4 * 1024 * 1024;      // 4MB for mobile
-const CHUNK_SIZE_DESKTOP = 12 * 1024 * 1024;    // 12MB for desktop
-const CHUNK_SIZE_DESKTOP_LARGE = 6 * 1024 * 1024; // 6MB for large files - reduced for better streaming
+// Performance constants - optimized for HTTP/3/QUIC with smaller chunks for better loss recovery
+const CHUNK_SIZE_MOBILE = 512 * 1024;            // 512KB for mobile - better packet loss recovery
+const CHUNK_SIZE_DESKTOP = 1024 * 1024;          // 1MB for desktop - optimal for HTTP/3
+const CHUNK_SIZE_DESKTOP_LARGE = 768 * 1024;     // 768KB for large files - balance between throughput and recovery
 const CACHE_SIZE_MOBILE = 20;                    // 20 frames mobile cache
 const CACHE_SIZE_DESKTOP = 45;                   // 45 frames desktop cache
 const CACHE_SIZE_DESKTOP_LARGE = 35;             // 35 frames large file cache
 const PROGRESS_POLL_INTERVAL = 750;              // ms
 const RESIZE_DEBOUNCE_DELAY = 150;               // ms
+const MAX_PARALLEL_RANGE_REQUESTS = 3;           // Cap parallel Range requests for optimal throughput
 
 const VIDEO_LIBRARY = {
   "dance-nani": {
@@ -1832,11 +1833,41 @@ function updatePlaybackUI() {
   }
 }
 
+// Register Service Worker for HTTP/3/QUIC optimization
+async function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      console.log('[Volumetrik] Service Worker registered:', registration.scope);
+
+      // Listen for updates
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        console.log('[Volumetrik] Service Worker update found');
+
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'activated') {
+            console.log('[Volumetrik] Service Worker activated');
+          }
+        });
+      });
+    } catch (error) {
+      console.warn('[Volumetrik] Service Worker registration failed:', error);
+    }
+  } else {
+    console.log('[Volumetrik] Service Worker not supported in this browser');
+  }
+}
+
 function bootstrap() {
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init, { once: true });
+    document.addEventListener('DOMContentLoaded', () => {
+      init();
+      registerServiceWorker();
+    }, { once: true });
   } else {
     init();
+    registerServiceWorker();
   }
 }
 

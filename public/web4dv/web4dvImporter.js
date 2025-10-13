@@ -9,6 +9,8 @@
 // Copyright: 4D View Solutions SAS
 // Authors: M.Adam & T.Groubet
 //
+// Modified: HTTP/3/QUIC optimization with lazy texture loading
+//
 // NOTE:
 // ADD: import WEB4DS from 'yourpath/web4dvImporter.js'
 // in your main script
@@ -26,6 +28,7 @@
 
 import {default as ResourceManagerXHR, Decoder4D} from './web4dvResource.js'
 import {default as Model4D} from './model4D_Three.js'
+import TextureUploadQueue from './TextureUploadQueue.js'
 
 // 4Dviews variables
 const resourceManager = new ResourceManagerXHR()
