@@ -220,6 +220,11 @@ function setupRenderer() {
   renderer.setPixelRatio(adaptivePixelRatio);
   console.log('[Volumetrik] Pixel ratio:', adaptivePixelRatio, '(device:', window.devicePixelRatio + ')');
 
+  // Explicitly disable shadow rendering for maximum performance
+  // (WEB4DS library enables this at line 140, but we override it here)
+  renderer.shadowMap.enabled = false;
+  console.log('[Volumetrik] Shadow rendering disabled (overriding WEB4DS library default)');
+
   renderer.xr.enabled = true;
 }
 
@@ -241,11 +246,13 @@ function setupScene() {
   const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
   keyLight.position.set(5, 10, 5);
   keyLight.name = 'keyLight'; // Named for AR mode optimization
+  keyLight.castShadow = false; // Explicitly disable shadows for performance
   scene.add(keyLight);
 
   const fillLight = new THREE.DirectionalLight(0x8899ff, 0.6);
   fillLight.position.set(-3, 6, -6);
   fillLight.name = 'fillLight'; // Named for AR mode optimization
+  fillLight.castShadow = false; // Explicitly disable shadows for performance
   scene.add(fillLight);
 
   const ambient = new THREE.AmbientLight(0x505050, 0.8);
