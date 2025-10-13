@@ -240,9 +240,10 @@ function setupEventListeners() {
   videoButtons.forEach((btn) => {
     btn.addEventListener('click', () => {
       const videoId = btn.dataset.video;
-      if (!videoId || videoId === currentVideoId) {
+      if (!videoId) {
         return;
       }
+      // Allow re-clicking same video for retry (removed currentVideoId check)
       setActiveVideoButton(videoId);
       loadVideo(videoId, { resumePlayback: true });
     });
@@ -339,13 +340,62 @@ function setActiveVideoButton(videoId) {
   });
 }
 
+function removeSequenceMeshFromScene(sequence) {
+  if (!sequence || !scene) return;
+
+  try {
+    // Get the mesh from the sequence's model4D
+    const mesh = sequence.model4D?.mesh;
+    if (mesh) {
+      console.log('[Volumetrik] Removing sequence mesh from scene');
+      scene.remove(mesh);
+
+      // Dispose geometry and materials to free memory
+      if (mesh.geometry) {
+        mesh.geometry.dispose();
+        console.log('[Volumetrik] Disposed mesh geometry');
+      }
+      if (mesh.material) {
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach(mat => {
+            if (mat.map) mat.map.dispose();
+            if (mat.normalMap) mat.normalMap.dispose();
+            if (mat.roughnessMap) mat.roughnessMap.dispose();
+            if (mat.metalnessMap) mat.metalnessMap.dispose();
+            mat.dispose();
+          });
+        } else {
+          if (mesh.material.map) mesh.material.map.dispose();
+          if (mesh.material.normalMap) mesh.material.normalMap.dispose();
+          if (mesh.material.roughnessMap) mesh.material.roughnessMap.dispose();
+          if (mesh.material.metalnessMap) mesh.material.metalnessMap.dispose();
+          mesh.material.dispose();
+        }
+        console.log('[Volumetrik] Disposed mesh materials');
+      }
+    }
+  } catch (error) {
+    console.warn('[Volumetrik] Error removing mesh from scene:', error);
+  }
+}
+
 function loadVideo(videoId, options = {}) {
   // Clean up AR state when switching videos in AR mode
   if (isARMode) {
     console.log('[Volumetrik] Cleaning up AR state before switching videos');
 
-    // Clear placed meshes array (don't dispose, they're either the original or already disposed)
+    // Remove old mesh from placed meshes if it exists
+    if (arPlacedMeshes.length > 0 && currentSequence) {
+      const oldMesh = currentSequence.model4D?.mesh;
+      if (oldMesh) {
+        console.log('[Volumetrik] AR: Removing old placed mesh from scene');
+        scene.remove(oldMesh);
+      }
+    }
+
+    // Clear placed meshes array and reset AR placement
     arPlacedMeshes = [];
+    arInitialPlacement = null;
 
     // Remove and recreate reticle to prevent double reticle issue
     if (reticle) {
@@ -388,9 +438,12 @@ function loadVideo(videoId, options = {}) {
       loadingTimeout = null;
     }
 
-    // Destroy current sequence safely
+    // Destroy current sequence safely with proper cleanup
     if (currentSequence) {
       try {
+        // Remove mesh from scene first
+        removeSequenceMeshFromScene(currentSequence);
+        // Then destroy the sequence
         currentSequence.destroy();
       } catch (destroyError) {
         console.warn('[Volumetrik] Error destroying sequence during cancel', destroyError);
@@ -452,12 +505,29 @@ function loadVideo(videoId, options = {}) {
   const create = () => createSequence(targetVideoId, videoConfig, { startFrame, resumePlayback });
 
   if (currentSequence) {
+    console.log('[Volumetrik] Destroying previous sequence before loading new one');
     const seq = currentSequence;
-    currentSequence = null;
+
     try {
-      seq.destroy(create);
+      // Remove mesh from scene BEFORE destroy to prevent visual corruption
+      removeSequenceMeshFromScene(seq);
+
+      // Clear the reference immediately after cleanup
+      currentSequence = null;
+
+      // Try destroy with callback
+      if (typeof seq.destroy === 'function') {
+        // Call destroy and pass create callback
+        seq.destroy(create);
+      } else {
+        // Fallback: if destroy doesn't exist or fails, create anyway
+        console.warn('[Volumetrik] Sequence has no destroy method, creating new sequence anyway');
+        create();
+      }
     } catch (error) {
-      console.warn('[Volumetrik] destroy failed', error);
+      console.warn('[Volumetrik] destroy failed:', error);
+      // Ensure we still create the new sequence even if destroy fails
+      currentSequence = null;
       create();
     }
   } else {
@@ -586,6 +656,7 @@ function createSequence(videoId, videoConfig, options = {}) {
   const primaryUrl = IS_MOBILE && supportsAstc && mobileUrl ? mobileUrl : defaultUrl;
 
   try {
+    console.log('[Volumetrik] Creating new WEB4DS sequence for', videoId);
     currentSequence = new WEB4DS(
       videoId,
       primaryUrl,
@@ -597,6 +668,7 @@ function createSequence(videoId, videoConfig, options = {}) {
       camera
     );
 
+    console.log('[Volumetrik] WEB4DS sequence created, mesh will be added to scene by library');
     currentSequence.startFrame = startFrame;
 
     // Optimize caching based on device and file size
@@ -724,6 +796,8 @@ function finalizeLoad(videoId, videoConfig, startFrame) {
     isLoadingVideo = false;
     return;
   }
+
+  console.log('[Volumetrik] Finalizing load for', videoId, '- mesh in scene:', currentSequence.model4D?.mesh ? 'YES' : 'NO');
 
   hideLoadingPanel();
 
