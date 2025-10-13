@@ -92,11 +92,19 @@ let frameTotalEl;
 let frameBufferedEl;
 let instructionsEl;
 
+// AR UI elements
+let arOverlayEl;
+let arHintEl;
+let arModeIndicatorEl;
+let arResetBtn;
+let arHintTimeout = null;
+
 let hasInitialized = false;
 let resizeTimeout = null;
 let arEventListenersAdded = false;
 let lastFrameUpdate = -1;
 let arPlacedMeshes = []; // Track meshes placed in AR mode
+let arInitialPlacement = null; // Store initial placement for reset
 let arTouchState = {
   touches: [],
   initialDistance: 0,
@@ -107,6 +115,9 @@ let arTouchState = {
   longPressTimer: null,
   longPressStartPos: null
 };
+
+// AR Performance: Position clamping boundaries (prevent actor from going too far)
+const AR_MAX_DISTANCE = 10; // Maximum distance from camera (10 meters)
 
 function init() {
   if (hasInitialized) return;
@@ -133,6 +144,17 @@ function init() {
   frameTotalEl = document.getElementById('frame-total');
   frameBufferedEl = document.getElementById('frame-buffered');
   instructionsEl = document.getElementById('instructions');
+
+  // AR UI elements
+  arOverlayEl = document.getElementById('ar-overlay');
+  arHintEl = document.getElementById('ar-hint');
+  arModeIndicatorEl = document.getElementById('ar-mode-indicator');
+  arResetBtn = document.getElementById('ar-reset-btn');
+
+  // AR reset button handler
+  if (arResetBtn) {
+    arResetBtn.addEventListener('click', resetARPlacement);
+  }
 
   // Combined iteration - performance optimization
   Object.keys(VIDEO_LIBRARY).forEach((id) => {
@@ -854,6 +876,119 @@ function formatTime(totalSeconds) {
   return `${mins.toString().padStart(2, '0')}:${remStr}`;
 }
 
+// AR UI Helper Functions
+function showAROverlay() {
+  if (arOverlayEl) {
+    arOverlayEl.classList.add('show');
+  }
+}
+
+function hideAROverlay() {
+  if (arOverlayEl) {
+    arOverlayEl.classList.remove('show');
+  }
+}
+
+function showARHint(message, duration = 3000) {
+  if (!arHintEl) return;
+
+  // Clear any existing timeout
+  if (arHintTimeout) {
+    clearTimeout(arHintTimeout);
+    arHintTimeout = null;
+  }
+
+  arHintEl.textContent = message;
+  arHintEl.classList.add('show');
+
+  if (duration > 0) {
+    arHintTimeout = setTimeout(() => {
+      arHintEl.classList.remove('show');
+      arHintTimeout = null;
+    }, duration);
+  }
+}
+
+function hideARHint() {
+  if (arHintEl) {
+    arHintEl.classList.remove('show');
+  }
+  if (arHintTimeout) {
+    clearTimeout(arHintTimeout);
+    arHintTimeout = null;
+  }
+}
+
+function showARModeIndicator(mode) {
+  if (!arModeIndicatorEl) return;
+
+  // Remove all mode classes
+  arModeIndicatorEl.classList.remove('rotate-mode', 'move-mode', 'scale-mode');
+
+  // Set message and class based on mode
+  switch(mode) {
+    case 'rotate':
+      arModeIndicatorEl.textContent = 'Drag to rotate';
+      arModeIndicatorEl.classList.add('rotate-mode');
+      break;
+    case 'move':
+      arModeIndicatorEl.textContent = 'Drag to move';
+      arModeIndicatorEl.classList.add('move-mode');
+      break;
+    case 'scale':
+      arModeIndicatorEl.textContent = 'Pinch to scale';
+      arModeIndicatorEl.classList.add('scale-mode');
+      break;
+    default:
+      arModeIndicatorEl.textContent = '';
+  }
+
+  arModeIndicatorEl.classList.add('show');
+}
+
+function hideARModeIndicator() {
+  if (arModeIndicatorEl) {
+    arModeIndicatorEl.classList.remove('show');
+  }
+}
+
+function resetARPlacement() {
+  if (!isARMode || arPlacedMeshes.length === 0) return;
+
+  const mesh = arPlacedMeshes[0];
+
+  if (arInitialPlacement && mesh) {
+    // Reset to initial placement
+    mesh.position.copy(arInitialPlacement.position);
+    mesh.rotation.copy(arInitialPlacement.rotation);
+    mesh.scale.copy(arInitialPlacement.scale);
+
+    console.log('[Volumetrik] AR: Reset to initial placement');
+    showARHint('Position reset', 2000);
+
+    // Haptic feedback
+    if (navigator.vibrate) {
+      navigator.vibrate(50);
+    }
+  }
+}
+
+function clampARPosition(mesh) {
+  // Clamp actor position to prevent it from going too far from camera
+  const distance = camera.position.distanceTo(mesh.position);
+
+  if (distance > AR_MAX_DISTANCE) {
+    // Calculate direction from camera to mesh
+    const direction = new THREE.Vector3();
+    direction.subVectors(mesh.position, camera.position).normalize();
+
+    // Set position to max distance
+    mesh.position.copy(camera.position).addScaledVector(direction, AR_MAX_DISTANCE);
+
+    console.log('[Volumetrik] AR: Position clamped to max distance', AR_MAX_DISTANCE);
+  }
+}
+
 function setupARButton() {
   const arButton = document.getElementById('ar-button');
 
@@ -969,6 +1104,10 @@ function onARSessionStart() {
   console.log('[Volumetrik] AR session started');
   isARMode = true;
 
+  // Show AR UI overlay
+  showAROverlay();
+  showARHint('Tap anywhere to place actor', 5000);
+
   // Enable passthrough: make background transparent to show camera feed
   scene.background = null;
 
@@ -1017,6 +1156,14 @@ function onARSessionEnd() {
   isARMode = false;
   hitTestSourceRequested = false;
   hitTestSource = null;
+
+  // Hide AR UI overlay
+  hideAROverlay();
+  hideARHint();
+  hideARModeIndicator();
+
+  // Reset AR initial placement
+  arInitialPlacement = null;
 
   // Remove AR gesture controls
   document.removeEventListener('touchstart', onARTouchStart);
@@ -1169,10 +1316,22 @@ function onARSelect() {
     // Reset rotation to face forward (0,0,0) - don't use lookAt which makes it face camera
     mesh.rotation.set(0, 0, 0);
 
+    // Store initial placement for reset functionality
+    arInitialPlacement = {
+      position: mesh.position.clone(),
+      rotation: mesh.rotation.clone(),
+      scale: mesh.scale.clone()
+    };
+
     // Add to placed meshes for manipulation
     arPlacedMeshes.push(mesh);
 
-    console.log('[Volumetrik] AR: Actor placed at human scale (0.3x)');
+    console.log('[Volumetrik] AR: Actor placed at human scale (1.5x)');
+
+    // Show manipulation hints
+    hideARHint();
+    showARHint('Drag to rotate • Hold to move • Pinch to scale', 5000);
+    showARModeIndicator('rotate');
   } catch (error) {
     console.error('[Volumetrik] AR select failed:', error);
   }
@@ -1302,12 +1461,18 @@ function onARTouchStart(event) {
       arTouchState.longPressStartPos = { x: touch.clientX, y: touch.clientY };
       arTouchState.isDragging = true; // Enable rotation immediately for light touches
 
+      // Show rotation mode indicator
+      showARModeIndicator('rotate');
+
       // Start long-press timer (500ms) - will switch to move mode if user holds still
       arTouchState.longPressTimer = setTimeout(() => {
         // Long press detected without significant movement - activate move mode
         arTouchState.isMoving = true;
         arTouchState.isDragging = false; // Disable rotation, enable move
         console.log('[Volumetrik] AR: MOVE MODE ACTIVATED - Hold and drag to reposition on floor');
+
+        // Show move mode indicator
+        showARModeIndicator('move');
 
         // Add stronger haptic feedback
         if (navigator.vibrate) {
@@ -1330,6 +1495,10 @@ function onARTouchStart(event) {
       arTouchState.initialDistance = Math.sqrt(dx * dx + dy * dy);
       arTouchState.initialScale = arPlacedMeshes[0].scale.x;
       arTouchState.selectedMesh = arPlacedMeshes[0];
+
+      // Show scale mode indicator
+      showARModeIndicator('scale');
+
       console.log('[Volumetrik] AR: Pinch scale mode activated, initial distance:', arTouchState.initialDistance);
       event.preventDefault();
     }
@@ -1386,6 +1555,9 @@ function onARTouchMove(event) {
         arTouchState.selectedMesh.position.add(worldMovement);
         arTouchState.selectedMesh.position.y = currentY; // Lock Y to prevent vertical drift
 
+        // Clamp position to prevent actor from going too far
+        clampARPosition(arTouchState.selectedMesh);
+
         console.log('[Volumetrik] AR: Moving on floor, delta:', deltaX, deltaY, 'position:', arTouchState.selectedMesh.position);
       }
     } else if (arTouchState.isDragging) {
@@ -1441,6 +1613,10 @@ function onARTouchEnd(event) {
     arTouchState.selectedMesh = null;
     arTouchState.touches = [];
     arTouchState.longPressStartPos = null;
+
+    // Hide mode indicator when all touches end
+    hideARModeIndicator();
+
     console.log('[Volumetrik] AR: Touch ended, state reset');
   } else {
     // Still some fingers touching - update touch array

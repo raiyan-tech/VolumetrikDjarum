@@ -399,6 +399,109 @@
       display: none; /* Hidden by default, shown via JS when AR is available */
     }
 
+    /* AR UI Overlay - Hints and Reset Button */
+    .ar-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none; /* Allow touch to pass through to AR scene */
+      z-index: 95;
+      display: none;
+    }
+
+    .ar-overlay.show {
+      display: block;
+    }
+
+    /* AR Hint Message (center of screen) */
+    .ar-hint {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(10px);
+      color: #fff;
+      padding: 16px 24px;
+      border-radius: 16px;
+      font-size: 15px;
+      font-weight: 600;
+      text-align: center;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      max-width: 90vw;
+      line-height: 1.5;
+    }
+
+    .ar-hint.show {
+      opacity: 1;
+    }
+
+    /* AR Mode Indicator (bottom center, above progress bar) */
+    .ar-mode-indicator {
+      position: absolute;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(10px);
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+      opacity: 0;
+      transition: opacity 0.3s ease, background 0.3s ease;
+      pointer-events: none;
+    }
+
+    .ar-mode-indicator.show {
+      opacity: 1;
+    }
+
+    .ar-mode-indicator.rotate-mode {
+      background: rgba(99, 102, 241, 0.9); /* Indigo for rotation */
+    }
+
+    .ar-mode-indicator.move-mode {
+      background: rgba(16, 185, 129, 0.9); /* Green for move */
+    }
+
+    .ar-mode-indicator.scale-mode {
+      background: rgba(245, 158, 11, 0.9); /* Amber for scale */
+    }
+
+    /* AR Reset Button (top right corner) */
+    .ar-reset-btn {
+      position: absolute;
+      top: calc(env(safe-area-inset-top, 12px) + 12px);
+      right: 16px;
+      background: rgba(239, 68, 68, 0.9);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 52px;
+      height: 52px;
+      font-size: 24px;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      pointer-events: auto; /* Enable touch for this button */
+      z-index: 101;
+    }
+
+    .ar-reset-btn:active {
+      transform: scale(0.95);
+      background: rgba(220, 38, 38, 1);
+    }
+
     @media (max-width: 768px) {
       .branding {
         left: 12px;
@@ -564,6 +667,13 @@
       <span>Frame: <span id="frame-current">0</span> / <span id="frame-total">0</span></span>
       <span>Buffered: <span id="frame-buffered">0</span> frames</span>
     </div>
+  </div>
+
+  <!-- AR Overlay UI -->
+  <div class="ar-overlay" id="ar-overlay">
+    <div class="ar-hint" id="ar-hint">Tap anywhere to place actor</div>
+    <div class="ar-mode-indicator" id="ar-mode-indicator">Drag to rotate</div>
+    <button class="ar-reset-btn" id="ar-reset-btn" title="Reset position">&#8634;</button>
   </div>
 
   <script type="module" src="./app.js?v=20251011-3"></script>
