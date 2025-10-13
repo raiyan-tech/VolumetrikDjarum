@@ -188,11 +188,22 @@ function setupRenderer() {
   let context;
   if (WEBGL.isWebGL2Available()) {
     context = canvas.getContext('webgl2');
-    renderer = new THREE.WebGLRenderer({ canvas, context, antialias: true, alpha: true });
+    renderer = new THREE.WebGLRenderer({
+      canvas,
+      context,
+      antialias: !IS_MOBILE, // Disable antialiasing on mobile for better performance
+      alpha: true,
+      powerPreference: 'high-performance' // Request dedicated GPU when available
+    });
     console.log('[Volumetrik] Using WebGL2 context');
   } else if (WEBGL.isWebGLAvailable()) {
     context = canvas.getContext('webgl');
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: !IS_MOBILE, // Disable antialiasing on mobile for better performance
+      alpha: true,
+      powerPreference: 'high-performance' // Request dedicated GPU when available
+    });
     console.log('[Volumetrik] Using WebGL1 context');
   } else {
     const warning = WEBGL.getWebGLErrorMessage();
@@ -201,7 +212,14 @@ function setupRenderer() {
   }
 
   renderer.setSize(container.offsetWidth, container.offsetHeight);
-  renderer.setPixelRatio(window.devicePixelRatio);
+
+  // Adaptive pixel ratio for performance
+  // Mobile: Use 1x for best performance (high-DPI devices render 4-9x pixels at native ratio)
+  // Desktop: Cap at 2x to prevent excessive rendering on ultra high-DPI screens
+  const adaptivePixelRatio = IS_MOBILE ? 1 : Math.min(window.devicePixelRatio, 2);
+  renderer.setPixelRatio(adaptivePixelRatio);
+  console.log('[Volumetrik] Pixel ratio:', adaptivePixelRatio, '(device:', window.devicePixelRatio + ')');
+
   renderer.xr.enabled = true;
 }
 
@@ -222,13 +240,16 @@ function setupScene() {
 
   const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
   keyLight.position.set(5, 10, 5);
+  keyLight.name = 'keyLight'; // Named for AR mode optimization
   scene.add(keyLight);
 
   const fillLight = new THREE.DirectionalLight(0x8899ff, 0.6);
   fillLight.position.set(-3, 6, -6);
+  fillLight.name = 'fillLight'; // Named for AR mode optimization
   scene.add(fillLight);
 
   const ambient = new THREE.AmbientLight(0x505050, 0.8);
+  ambient.name = 'ambientLight'; // Named for AR mode optimization
   scene.add(ambient);
 
   const gridHelper = new THREE.GridHelper(10, 10, 0x667eea, 0x444444);
@@ -1189,6 +1210,16 @@ function onARSessionStart() {
   const grid = scene.getObjectByName('grid');
   if (grid) grid.visible = false;
 
+  // Hide scene lights in AR mode (AR uses real-world lighting from camera feed)
+  // This improves performance by skipping unnecessary light calculations
+  const keyLight = scene.getObjectByName('keyLight');
+  const fillLight = scene.getObjectByName('fillLight');
+  const ambientLight = scene.getObjectByName('ambientLight');
+  if (keyLight) keyLight.visible = false;
+  if (fillLight) fillLight.visible = false;
+  if (ambientLight) ambientLight.visible = false;
+  console.log('[Volumetrik] AR: Scene lights hidden for better performance');
+
   // Hide the original mesh - user will place it with SLAM
   if (currentSequence && currentSequence.isLoaded && currentSequence.model4D && currentSequence.model4D.mesh) {
     const mesh = currentSequence.model4D.mesh;
@@ -1303,6 +1334,15 @@ function onARSessionEnd() {
   // Restore grid visibility
   const grid = scene.getObjectByName('grid');
   if (grid) grid.visible = true;
+
+  // Restore scene lights visibility
+  const keyLight = scene.getObjectByName('keyLight');
+  const fillLight = scene.getObjectByName('fillLight');
+  const ambientLight = scene.getObjectByName('ambientLight');
+  if (keyLight) keyLight.visible = true;
+  if (fillLight) fillLight.visible = true;
+  if (ambientLight) ambientLight.visible = true;
+  console.log('[Volumetrik] AR: Scene lights restored');
 
   // Change button back to "AR"
   const arButton = document.getElementById('ar-button');
