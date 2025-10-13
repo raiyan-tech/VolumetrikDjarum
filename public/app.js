@@ -1109,29 +1109,57 @@ function onARSelect() {
   }
 
   try {
-    // If reticle exists and has a valid position, use it
+    // If reticle exists and has a valid position, use it but add extra forward offset
     if (reticle && reticle.visible) {
       if (reticle.matrix && reticle.matrix.elements.some(e => e !== 0)) {
         // Use hit test matrix position
         mesh.position.setFromMatrixPosition(reticle.matrix);
-        console.log('[Volumetrik] AR: Placed at reticle matrix position');
-      } else if (reticle.position) {
-        // Use reticle's direct position (fallback positioning)
-        mesh.position.copy(reticle.position);
-        console.log('[Volumetrik] AR: Placed at reticle position');
-      } else {
-        // Last resort: 1m in front at eye level
+
+        // Add extra forward offset (3m on XY plane) so actor doesn't overlap with user
         const cameraDirection = new THREE.Vector3();
         camera.getWorldDirection(cameraDirection);
-        mesh.position.copy(camera.position).add(cameraDirection.multiplyScalar(1.0));
-        console.log('[Volumetrik] AR: Placed at fallback position (1m in front)');
+        cameraDirection.y = 0; // Project onto floor plane
+        cameraDirection.normalize();
+        mesh.position.addScaledVector(cameraDirection, 3.0); // Move 3m forward on floor plane
+
+        console.log('[Volumetrik] AR: Placed at reticle matrix position + 3m forward offset');
+      } else if (reticle.position) {
+        // Use reticle's direct position (fallback positioning) + forward offset
+        mesh.position.copy(reticle.position);
+
+        // Add extra forward offset (3m on XY plane) so actor doesn't overlap with user
+        const cameraDirection = new THREE.Vector3();
+        camera.getWorldDirection(cameraDirection);
+        cameraDirection.y = 0; // Project onto floor plane
+        cameraDirection.normalize();
+        mesh.position.addScaledVector(cameraDirection, 3.0); // Move 3m forward on floor plane
+
+        console.log('[Volumetrik] AR: Placed at reticle position + 3m forward offset');
+      } else {
+        // Last resort: 3m forward on floor plane from camera
+        const cameraDirection = new THREE.Vector3();
+        camera.getWorldDirection(cameraDirection);
+        cameraDirection.y = 0; // Project onto floor plane
+        cameraDirection.normalize();
+
+        const position = camera.position.clone();
+        position.addScaledVector(cameraDirection, 3.0); // 3m forward on floor
+        mesh.position.copy(position);
+
+        console.log('[Volumetrik] AR: Placed at fallback position (3m forward on floor)');
       }
     } else {
-      // No reticle: place 1m in front at eye level
+      // No reticle: place 3m forward on floor plane from camera
       const cameraDirection = new THREE.Vector3();
       camera.getWorldDirection(cameraDirection);
-      mesh.position.copy(camera.position).add(cameraDirection.multiplyScalar(1.0));
-      console.log('[Volumetrik] AR: Placed at fallback position (no reticle)');
+      cameraDirection.y = 0; // Project onto floor plane
+      cameraDirection.normalize();
+
+      const position = camera.position.clone();
+      position.addScaledVector(cameraDirection, 3.0); // 3m forward on floor
+      mesh.position.copy(position);
+
+      console.log('[Volumetrik] AR: Placed at fallback position (no reticle, 3m forward on floor)');
     }
 
     // Make mesh visible and set AR scale (0.8 = human scale)
@@ -1358,8 +1386,8 @@ function onARTouchMove(event) {
 
         // Move on floor plane: deltaX = left/right, deltaY = forward/back
         const worldMovement = new THREE.Vector3();
-        worldMovement.addScaledVector(right, deltaX * movementScale); // Left/right movement
-        worldMovement.addScaledVector(cameraDirection, -deltaY * movementScale); // Forward/back movement (inverted)
+        worldMovement.addScaledVector(right, -deltaX * movementScale); // Left/right movement (inverted to match drag direction)
+        worldMovement.addScaledVector(cameraDirection, deltaY * movementScale); // Forward/back movement
 
         // Apply movement but keep Y coordinate locked (stay on floor level)
         const currentY = arTouchState.selectedMesh.position.y;
