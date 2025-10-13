@@ -1115,56 +1115,56 @@ function onARSelect() {
         // Use hit test matrix position
         mesh.position.setFromMatrixPosition(reticle.matrix);
 
-        // Add extra forward offset (3m on XY plane) so actor doesn't overlap with user
+        // Add extra forward offset (1m on XY plane) so actor doesn't overlap with user
         const cameraDirection = new THREE.Vector3();
         camera.getWorldDirection(cameraDirection);
         cameraDirection.y = 0; // Project onto floor plane
         cameraDirection.normalize();
-        mesh.position.addScaledVector(cameraDirection, 3.0); // Move 3m forward on floor plane
+        mesh.position.addScaledVector(cameraDirection, 1.0); // Move 1m forward on floor plane
 
-        console.log('[Volumetrik] AR: Placed at reticle matrix position + 3m forward offset');
+        console.log('[Volumetrik] AR: Placed at reticle matrix position + 1m forward offset');
       } else if (reticle.position) {
         // Use reticle's direct position (fallback positioning) + forward offset
         mesh.position.copy(reticle.position);
 
-        // Add extra forward offset (3m on XY plane) so actor doesn't overlap with user
+        // Add extra forward offset (1m on XY plane) so actor doesn't overlap with user
         const cameraDirection = new THREE.Vector3();
         camera.getWorldDirection(cameraDirection);
         cameraDirection.y = 0; // Project onto floor plane
         cameraDirection.normalize();
-        mesh.position.addScaledVector(cameraDirection, 3.0); // Move 3m forward on floor plane
+        mesh.position.addScaledVector(cameraDirection, 1.0); // Move 1m forward on floor plane
 
-        console.log('[Volumetrik] AR: Placed at reticle position + 3m forward offset');
+        console.log('[Volumetrik] AR: Placed at reticle position + 1m forward offset');
       } else {
-        // Last resort: 3m forward on floor plane from camera
+        // Last resort: 1m forward on floor plane from camera
         const cameraDirection = new THREE.Vector3();
         camera.getWorldDirection(cameraDirection);
         cameraDirection.y = 0; // Project onto floor plane
         cameraDirection.normalize();
 
         const position = camera.position.clone();
-        position.addScaledVector(cameraDirection, 3.0); // 3m forward on floor
+        position.addScaledVector(cameraDirection, 1.0); // 1m forward on floor
         mesh.position.copy(position);
 
-        console.log('[Volumetrik] AR: Placed at fallback position (3m forward on floor)');
+        console.log('[Volumetrik] AR: Placed at fallback position (1m forward on floor)');
       }
     } else {
-      // No reticle: place 3m forward on floor plane from camera
+      // No reticle: place 1m forward on floor plane from camera
       const cameraDirection = new THREE.Vector3();
       camera.getWorldDirection(cameraDirection);
       cameraDirection.y = 0; // Project onto floor plane
       cameraDirection.normalize();
 
       const position = camera.position.clone();
-      position.addScaledVector(cameraDirection, 3.0); // 3m forward on floor
+      position.addScaledVector(cameraDirection, 1.0); // 1m forward on floor
       mesh.position.copy(position);
 
-      console.log('[Volumetrik] AR: Placed at fallback position (no reticle, 3m forward on floor)');
+      console.log('[Volumetrik] AR: Placed at fallback position (no reticle, 1m forward on floor)');
     }
 
-    // Make mesh visible and set AR scale (0.8 = human scale)
+    // Make mesh visible and set AR scale (1.5 = human scale)
     mesh.visible = true;
-    mesh.scale.set(0.8, 0.8, 0.8);
+    mesh.scale.set(1.5, 1.5, 1.5);
 
     // Reset rotation to face forward (0,0,0) - don't use lookAt which makes it face camera
     mesh.rotation.set(0, 0, 0);
@@ -1296,18 +1296,18 @@ function onARTouchStart(event) {
     arTouchState.touches = Array.from(event.touches);
 
     if (event.touches.length === 1) {
-      // Single touch - could be rotation or move (determined by long press)
+      // Single touch - start with rotation enabled, switch to move mode if long press completes
       const touch = event.touches[0];
       arTouchState.selectedMesh = arPlacedMeshes[0];
       arTouchState.longPressStartPos = { x: touch.clientX, y: touch.clientY };
-      arTouchState.isDragging = false; // Don't enable rotation yet - wait to see if it's a long press
+      arTouchState.isDragging = true; // Enable rotation immediately for light touches
 
-      // Start long-press timer (500ms)
+      // Start long-press timer (500ms) - will switch to move mode if user holds still
       arTouchState.longPressTimer = setTimeout(() => {
-        // Long press detected - activate move mode
+        // Long press detected without significant movement - activate move mode
         arTouchState.isMoving = true;
-        arTouchState.isDragging = false; // Ensure rotation is disabled
-        console.log('[Volumetrik] AR: MOVE MODE ACTIVATED - Long press detected, drag to reposition');
+        arTouchState.isDragging = false; // Disable rotation, enable move
+        console.log('[Volumetrik] AR: MOVE MODE ACTIVATED - Hold and drag to reposition on floor');
 
         // Add stronger haptic feedback
         if (navigator.vibrate) {
@@ -1315,7 +1315,7 @@ function onARTouchStart(event) {
         }
       }, 500);
 
-      console.log('[Volumetrik] AR: Single touch started, waiting 500ms for long press or rotation');
+      console.log('[Volumetrik] AR: Single touch started - rotation enabled, long-press for move mode');
       event.preventDefault();
     } else if (event.touches.length === 2) {
       // Two fingers - scale mode
@@ -1346,20 +1346,12 @@ function onARTouchMove(event) {
   const touch = event.touches[0];
 
   if (event.touches.length === 1) {
-    // Check if finger has moved significantly - cancel long press if so (user is rotating, not long-pressing)
-    if (arTouchState.longPressTimer && arTouchState.longPressStartPos) {
-      const moveDistance = Math.sqrt(
-        Math.pow(touch.clientX - arTouchState.longPressStartPos.x, 2) +
-        Math.pow(touch.clientY - arTouchState.longPressStartPos.y, 2)
-      );
-
-      // If moved more than 20 pixels, cancel long press timer and enable rotation
-      if (moveDistance > 20) {
-        clearTimeout(arTouchState.longPressTimer);
-        arTouchState.longPressTimer = null;
-        arTouchState.isDragging = true; // Enable rotation mode
-        console.log('[Volumetrik] AR: Movement detected (>20px), switching to ROTATION mode');
-      }
+    // If finger moves at all, cancel long press timer (user is actively dragging for rotation)
+    if (arTouchState.longPressTimer) {
+      clearTimeout(arTouchState.longPressTimer);
+      arTouchState.longPressTimer = null;
+      // Keep isDragging true for rotation
+      console.log('[Volumetrik] AR: Movement detected, staying in ROTATION mode (long-press cancelled)');
     }
 
     if (arTouchState.isMoving) {
