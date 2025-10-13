@@ -102,7 +102,10 @@ let arTouchState = {
   initialDistance: 0,
   initialScale: 1,
   selectedMesh: null,
-  isDragging: false
+  isDragging: false,
+  isMoving: false,
+  longPressTimer: null,
+  longPressStartPos: null
 };
 
 function init() {
@@ -1024,12 +1027,18 @@ function onARSessionEnd() {
   canvas.removeEventListener('touchend', onARTouchEnd);
 
   // Reset touch state
+  if (arTouchState.longPressTimer) {
+    clearTimeout(arTouchState.longPressTimer);
+  }
   arTouchState = {
     touches: [],
     initialDistance: 0,
     initialScale: 1,
     selectedMesh: null,
-    isDragging: false
+    isDragging: false,
+    isMoving: false,
+    longPressTimer: null,
+    longPressStartPos: null
   };
 
   // Restore scene background
@@ -1125,9 +1134,9 @@ function onARSelect() {
       console.log('[Volumetrik] AR: Placed at fallback position (no reticle)');
     }
 
-    // Make mesh visible and set AR scale (0.3 = human scale)
+    // Make mesh visible and set AR scale (0.8 = human scale)
     mesh.visible = true;
-    mesh.scale.set(0.3, 0.3, 0.3);
+    mesh.scale.set(0.8, 0.8, 0.8);
 
     // Reset rotation to face forward (0,0,0) - don't use lookAt which makes it face camera
     mesh.rotation.set(0, 0, 0);
@@ -1185,14 +1194,14 @@ function handleARHitTest(frame) {
       reticle.visible = true;
     }
   } else if (reticle && isARMode) {
-    // No hit test available, position reticle 1m in front of camera at eye level
+    // No hit test available, position reticle 8m in front of camera at eye level
     reticle.visible = true;
     const cameraDirection = new THREE.Vector3();
     camera.getWorldDirection(cameraDirection);
 
-    // Position 1m forward from camera, keep the camera's Y height (eye level)
+    // Position 8m forward from camera, keep the camera's Y height (eye level)
     const position = camera.position.clone();
-    const forwardOffset = cameraDirection.multiplyScalar(1.0);
+    const forwardOffset = cameraDirection.multiplyScalar(8.0);
     forwardOffset.y = 0; // Don't move vertically, keep camera's Y
     position.add(forwardOffset);
 
@@ -1258,13 +1267,35 @@ function onARTouchStart(event) {
     arTouchState.touches = Array.from(event.touches);
 
     if (event.touches.length === 1) {
-      // Single touch - rotation mode
+      // Single touch - could be rotation or move (determined by long press)
+      const touch = event.touches[0];
       arTouchState.isDragging = true;
       arTouchState.selectedMesh = arPlacedMeshes[0];
-      console.log('[Volumetrik] AR: Single touch rotation mode activated');
+      arTouchState.longPressStartPos = { x: touch.clientX, y: touch.clientY };
+
+      // Start long-press timer (500ms)
+      arTouchState.longPressTimer = setTimeout(() => {
+        // Long press detected - activate move mode
+        arTouchState.isMoving = true;
+        arTouchState.isDragging = false; // Disable rotation
+        console.log('[Volumetrik] AR: Long press detected - move mode activated');
+
+        // Optional: Add haptic feedback if available
+        if (navigator.vibrate) {
+          navigator.vibrate(50);
+        }
+      }, 500);
+
+      console.log('[Volumetrik] AR: Single touch started, waiting for long press or rotation');
       event.preventDefault();
     } else if (event.touches.length === 2) {
-      // Two fingers - scale and move mode
+      // Two fingers - scale mode
+      // Cancel long press timer if active
+      if (arTouchState.longPressTimer) {
+        clearTimeout(arTouchState.longPressTimer);
+        arTouchState.longPressTimer = null;
+      }
+
       const dx = event.touches[0].clientX - event.touches[1].clientX;
       const dy = event.touches[0].clientY - event.touches[1].clientY;
       arTouchState.initialDistance = Math.sqrt(dx * dx + dy * dy);
@@ -1283,16 +1314,62 @@ function onARTouchMove(event) {
     return;
   }
 
-  if (event.touches.length === 1 && arTouchState.isDragging) {
-    // Single finger drag - rotate the actor around Z axis
-    const touch = event.touches[0];
-    const previousTouch = arTouchState.touches[0];
+  const touch = event.touches[0];
 
-    if (previousTouch) {
-      const deltaX = touch.clientX - previousTouch.clientX;
-      // Reduced sensitivity from 0.01 to 0.005 (half as sensitive)
-      arTouchState.selectedMesh.rotation.z -= deltaX * 0.005;
-      console.log('[Volumetrik] AR: Rotating, deltaX:', deltaX, 'rotation.z:', arTouchState.selectedMesh.rotation.z);
+  if (event.touches.length === 1) {
+    // Check if finger has moved significantly - cancel long press if so (user is rotating, not long-pressing)
+    if (arTouchState.longPressTimer && arTouchState.longPressStartPos) {
+      const moveDistance = Math.sqrt(
+        Math.pow(touch.clientX - arTouchState.longPressStartPos.x, 2) +
+        Math.pow(touch.clientY - arTouchState.longPressStartPos.y, 2)
+      );
+
+      // If moved more than 10 pixels, cancel long press timer
+      if (moveDistance > 10) {
+        clearTimeout(arTouchState.longPressTimer);
+        arTouchState.longPressTimer = null;
+        console.log('[Volumetrik] AR: Movement detected, switching to rotation mode');
+      }
+    }
+
+    if (arTouchState.isMoving) {
+      // Move mode - translate touch movement to world space position
+      const previousTouch = arTouchState.touches[0];
+
+      if (previousTouch) {
+        const deltaX = touch.clientX - previousTouch.clientX;
+        const deltaY = touch.clientY - previousTouch.clientY;
+
+        // Convert screen space movement to world space
+        // Get camera right and up vectors
+        const cameraRight = new THREE.Vector3();
+        const cameraUp = new THREE.Vector3();
+        camera.getWorldDirection(cameraRight);
+        cameraRight.cross(camera.up).normalize(); // Right = forward × up
+        camera.getWorldDirection(cameraUp);
+        cameraUp.crossVectors(cameraRight, cameraUp).normalize(); // Up = right × forward
+
+        // Calculate movement in world space (scaled by distance to camera for intuitive control)
+        const distanceToCamera = camera.position.distanceTo(arTouchState.selectedMesh.position);
+        const movementScale = distanceToCamera * 0.001; // Scale factor based on distance
+
+        const worldMovement = new THREE.Vector3();
+        worldMovement.addScaledVector(cameraRight, deltaX * movementScale);
+        worldMovement.addScaledVector(camera.up, -deltaY * movementScale); // Invert Y for natural movement
+
+        arTouchState.selectedMesh.position.add(worldMovement);
+        console.log('[Volumetrik] AR: Moving, delta:', deltaX, deltaY, 'position:', arTouchState.selectedMesh.position);
+      }
+    } else if (arTouchState.isDragging) {
+      // Rotation mode - rotate the actor around Z axis
+      const previousTouch = arTouchState.touches[0];
+
+      if (previousTouch) {
+        const deltaX = touch.clientX - previousTouch.clientX;
+        // Reduced sensitivity from 0.01 to 0.005 (half as sensitive)
+        arTouchState.selectedMesh.rotation.z -= deltaX * 0.005;
+        console.log('[Volumetrik] AR: Rotating, deltaX:', deltaX, 'rotation.z:', arTouchState.selectedMesh.rotation.z);
+      }
     }
 
     arTouchState.touches = Array.from(event.touches);
@@ -1323,11 +1400,22 @@ function onARTouchMove(event) {
 function onARTouchEnd(event) {
   if (!isARMode) return;
 
+  // Clear long press timer if active
+  if (arTouchState.longPressTimer) {
+    clearTimeout(arTouchState.longPressTimer);
+    arTouchState.longPressTimer = null;
+  }
+
   if (event.touches.length === 0) {
+    // All fingers lifted - reset state
     arTouchState.isDragging = false;
+    arTouchState.isMoving = false;
     arTouchState.selectedMesh = null;
     arTouchState.touches = [];
+    arTouchState.longPressStartPos = null;
+    console.log('[Volumetrik] AR: Touch ended, state reset');
   } else {
+    // Still some fingers touching - update touch array
     arTouchState.touches = Array.from(event.touches);
   }
 }
