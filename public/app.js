@@ -336,13 +336,13 @@ function loadVideo(videoId, options = {}) {
 
     // Recreate reticle for new video
     reticle = new THREE.Mesh(
-      new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
+      new THREE.RingGeometry(0.4, 0.5, 32).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({ color: 0xffffff })
     );
     reticle.matrixAutoUpdate = false;
     reticle.visible = false;
     scene.add(reticle);
-    console.log('[Volumetrik] Created new reticle for video switch');
+    console.log('[Volumetrik] Created new reticle for video switch (40-50cm ring)');
 
     // Reset hit test
     hitTestSourceRequested = false;
@@ -986,13 +986,13 @@ function onARSessionStart() {
   // Set up hit test reticle for SLAM placement (only if not already exists)
   if (!reticle) {
     reticle = new THREE.Mesh(
-      new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
+      new THREE.RingGeometry(0.4, 0.5, 32).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({ color: 0xffffff })
     );
     reticle.matrixAutoUpdate = false;
     reticle.visible = false;
     scene.add(reticle);
-    console.log('[Volumetrik] AR: Created reticle for SLAM placement');
+    console.log('[Volumetrik] AR: Created reticle for SLAM placement (40-50cm ring)');
   } else {
     console.log('[Volumetrik] AR: Reusing existing reticle');
   }
@@ -1199,16 +1199,17 @@ function handleARHitTest(frame) {
     const cameraDirection = new THREE.Vector3();
     camera.getWorldDirection(cameraDirection);
 
-    // Position 8m forward from camera, keep the camera's Y height (eye level)
+    // Position 8m forward from camera at eye level (1.5m height)
     const position = camera.position.clone();
     const forwardOffset = cameraDirection.multiplyScalar(8.0);
-    forwardOffset.y = 0; // Don't move vertically, keep camera's Y
+    forwardOffset.y = 0; // Don't move vertically
     position.add(forwardOffset);
+    position.y = 1.5; // Force eye-level height regardless of camera Y
 
     reticle.position.copy(position);
     reticle.rotation.x = -Math.PI / 2; // Face up
     reticle.updateMatrixWorld(true);
-    console.log('[Volumetrik] Reticle fallback position:', position, 'Camera pos:', camera.position);
+    console.log('[Volumetrik] Reticle fallback position (8m forward at 1.5m height):', position, 'Camera pos:', camera.position);
   }
 }
 
@@ -1269,24 +1270,24 @@ function onARTouchStart(event) {
     if (event.touches.length === 1) {
       // Single touch - could be rotation or move (determined by long press)
       const touch = event.touches[0];
-      arTouchState.isDragging = true;
       arTouchState.selectedMesh = arPlacedMeshes[0];
       arTouchState.longPressStartPos = { x: touch.clientX, y: touch.clientY };
+      arTouchState.isDragging = false; // Don't enable rotation yet - wait to see if it's a long press
 
       // Start long-press timer (500ms)
       arTouchState.longPressTimer = setTimeout(() => {
         // Long press detected - activate move mode
         arTouchState.isMoving = true;
-        arTouchState.isDragging = false; // Disable rotation
-        console.log('[Volumetrik] AR: Long press detected - move mode activated');
+        arTouchState.isDragging = false; // Ensure rotation is disabled
+        console.log('[Volumetrik] AR: MOVE MODE ACTIVATED - Long press detected, drag to reposition');
 
-        // Optional: Add haptic feedback if available
+        // Add stronger haptic feedback
         if (navigator.vibrate) {
-          navigator.vibrate(50);
+          navigator.vibrate(100); // Longer vibration for move mode
         }
       }, 500);
 
-      console.log('[Volumetrik] AR: Single touch started, waiting for long press or rotation');
+      console.log('[Volumetrik] AR: Single touch started, waiting 500ms for long press or rotation');
       event.preventDefault();
     } else if (event.touches.length === 2) {
       // Two fingers - scale mode
@@ -1324,11 +1325,12 @@ function onARTouchMove(event) {
         Math.pow(touch.clientY - arTouchState.longPressStartPos.y, 2)
       );
 
-      // If moved more than 10 pixels, cancel long press timer
-      if (moveDistance > 10) {
+      // If moved more than 20 pixels, cancel long press timer and enable rotation
+      if (moveDistance > 20) {
         clearTimeout(arTouchState.longPressTimer);
         arTouchState.longPressTimer = null;
-        console.log('[Volumetrik] AR: Movement detected, switching to rotation mode');
+        arTouchState.isDragging = true; // Enable rotation mode
+        console.log('[Volumetrik] AR: Movement detected (>20px), switching to ROTATION mode');
       }
     }
 
