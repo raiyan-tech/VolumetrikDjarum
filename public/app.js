@@ -1120,9 +1120,9 @@ function onARSelect() {
         camera.getWorldDirection(cameraDirection);
         cameraDirection.y = 0; // Project onto floor plane
         cameraDirection.normalize();
-        mesh.position.addScaledVector(cameraDirection, 1.0); // Move 1m forward on floor plane
+        mesh.position.addScaledVector(cameraDirection, 1.5); // Move 1.5m forward on floor plane
 
-        console.log('[Volumetrik] AR: Placed at reticle matrix position + 1m forward offset');
+        console.log('[Volumetrik] AR: Placed at reticle matrix position + 1.5m forward offset');
       } else if (reticle.position) {
         // Use reticle's direct position (fallback positioning) + forward offset
         mesh.position.copy(reticle.position);
