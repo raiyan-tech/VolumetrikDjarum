@@ -1194,22 +1194,22 @@ function handleARHitTest(frame) {
       reticle.visible = true;
     }
   } else if (reticle && isARMode) {
-    // No hit test available, position reticle 8m in front of camera at eye level
+    // No hit test available, position reticle 3m in front of camera at chest height
     reticle.visible = true;
     const cameraDirection = new THREE.Vector3();
     camera.getWorldDirection(cameraDirection);
 
-    // Position 8m forward from camera at eye level (1.5m height)
+    // Position 3m forward from camera at chest height (1.2m above ground)
     const position = camera.position.clone();
-    const forwardOffset = cameraDirection.multiplyScalar(8.0);
+    const forwardOffset = cameraDirection.multiplyScalar(3.0);
     forwardOffset.y = 0; // Don't move vertically
     position.add(forwardOffset);
-    position.y = 1.5; // Force eye-level height regardless of camera Y
+    position.y = 1.2; // Chest height - lower than eye level for better floor visibility
 
     reticle.position.copy(position);
     reticle.rotation.x = -Math.PI / 2; // Face up
     reticle.updateMatrixWorld(true);
-    console.log('[Volumetrik] Reticle fallback position (8m forward at 1.5m height):', position, 'Camera pos:', camera.position);
+    console.log('[Volumetrik] Reticle fallback position (3m forward at 1.2m height):', position, 'Camera pos:', camera.position);
   }
 }
 
@@ -1335,32 +1335,38 @@ function onARTouchMove(event) {
     }
 
     if (arTouchState.isMoving) {
-      // Move mode - translate touch movement to world space position
+      // Move mode - translate touch movement to floor plane (XZ)
       const previousTouch = arTouchState.touches[0];
 
       if (previousTouch) {
         const deltaX = touch.clientX - previousTouch.clientX;
         const deltaY = touch.clientY - previousTouch.clientY;
 
-        // Convert screen space movement to world space
-        // Get camera right and up vectors
-        const cameraRight = new THREE.Vector3();
-        const cameraUp = new THREE.Vector3();
-        camera.getWorldDirection(cameraRight);
-        cameraRight.cross(camera.up).normalize(); // Right = forward × up
-        camera.getWorldDirection(cameraUp);
-        cameraUp.crossVectors(cameraRight, cameraUp).normalize(); // Up = right × forward
+        // Calculate camera's forward direction projected onto XZ plane (floor)
+        const cameraDirection = new THREE.Vector3();
+        camera.getWorldDirection(cameraDirection);
+        cameraDirection.y = 0; // Project onto floor plane
+        cameraDirection.normalize();
 
-        // Calculate movement in world space (scaled by distance to camera for intuitive control)
+        // Calculate right vector (perpendicular to forward on floor plane)
+        const right = new THREE.Vector3();
+        right.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
+
+        // Scale movement based on distance for intuitive control
         const distanceToCamera = camera.position.distanceTo(arTouchState.selectedMesh.position);
-        const movementScale = distanceToCamera * 0.001; // Scale factor based on distance
+        const movementScale = distanceToCamera * 0.002; // Adjusted sensitivity for floor movement
 
+        // Move on floor plane: deltaX = left/right, deltaY = forward/back
         const worldMovement = new THREE.Vector3();
-        worldMovement.addScaledVector(cameraRight, deltaX * movementScale);
-        worldMovement.addScaledVector(camera.up, -deltaY * movementScale); // Invert Y for natural movement
+        worldMovement.addScaledVector(right, deltaX * movementScale); // Left/right movement
+        worldMovement.addScaledVector(cameraDirection, -deltaY * movementScale); // Forward/back movement (inverted)
 
+        // Apply movement but keep Y coordinate locked (stay on floor level)
+        const currentY = arTouchState.selectedMesh.position.y;
         arTouchState.selectedMesh.position.add(worldMovement);
-        console.log('[Volumetrik] AR: Moving, delta:', deltaX, deltaY, 'position:', arTouchState.selectedMesh.position);
+        arTouchState.selectedMesh.position.y = currentY; // Lock Y to prevent vertical drift
+
+        console.log('[Volumetrik] AR: Moving on floor, delta:', deltaX, deltaY, 'position:', arTouchState.selectedMesh.position);
       }
     } else if (arTouchState.isDragging) {
       // Rotation mode - rotate the actor around Z axis
