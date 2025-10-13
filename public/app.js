@@ -843,7 +843,8 @@ function finalizeLoad(videoId, videoConfig, startFrame) {
     }
     if (currentSequence.model4D.surface) {
       currentSequence.model4D.surface.receiveShadow = false;
-      console.log('[Volumetrik] Disabled receiveShadow on surface');
+      currentSequence.model4D.surface.visible = false; // Hide ShadowMaterial plane completely
+      console.log('[Volumetrik] Hidden ShadowMaterial surface (removes shadow circle under actor)');
     }
     if (currentSequence.model4D.light) {
       currentSequence.model4D.light.castShadow = false;
