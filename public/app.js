@@ -827,6 +827,30 @@ function finalizeLoad(videoId, videoConfig, startFrame) {
 
   console.log('[Volumetrik] Finalizing load for', videoId, '- mesh in scene:', currentSequence.model4D?.mesh ? 'YES' : 'NO');
 
+  // CRITICAL: Force disable shadows after WEB4DS library enables them
+  // WEB4DS re-enables shadowMap in initSequence(), so we must override it here
+  if (renderer) {
+    renderer.shadowMap.enabled = false;
+    console.log('[Volumetrik] Shadow rendering FORCE DISABLED after sequence load');
+  }
+
+  // Disable shadows on the volumetric mesh and library objects
+  if (currentSequence.model4D) {
+    if (currentSequence.model4D.mesh) {
+      currentSequence.model4D.mesh.castShadow = false;
+      currentSequence.model4D.mesh.receiveShadow = false;
+      console.log('[Volumetrik] Disabled shadows on volumetric mesh');
+    }
+    if (currentSequence.model4D.surface) {
+      currentSequence.model4D.surface.receiveShadow = false;
+      console.log('[Volumetrik] Disabled receiveShadow on surface');
+    }
+    if (currentSequence.model4D.light) {
+      currentSequence.model4D.light.castShadow = false;
+      console.log('[Volumetrik] Disabled castShadow on library light');
+    }
+  }
+
   hideLoadingPanel();
 
   // Clear timeout since loading completed successfully
