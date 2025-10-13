@@ -3,7 +3,7 @@ import WEB4DS from "./web4dv/web4dvImporter.js";
 // Performance constants - balanced for stability and performance
 const CHUNK_SIZE_MOBILE = 4 * 1024 * 1024;      // 4MB for mobile
 const CHUNK_SIZE_DESKTOP = 12 * 1024 * 1024;    // 12MB for desktop
-const CHUNK_SIZE_DESKTOP_LARGE = 12 * 1024 * 1024; // 12MB for large files
+const CHUNK_SIZE_DESKTOP_LARGE = 6 * 1024 * 1024; // 6MB for large files - reduced for better streaming
 const CACHE_SIZE_MOBILE = 20;                    // 20 frames mobile cache
 const CACHE_SIZE_DESKTOP = 45;                   // 45 frames desktop cache
 const CACHE_SIZE_DESKTOP_LARGE = 35;             // 35 frames large file cache
@@ -20,7 +20,7 @@ const VIDEO_LIBRARY = {
   "dance-didik": {
     name: "Dua Muka",
     desktop: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/DANCE/Didik_Take_01_30_00fps_FILTERED_DESKTOP_720.4ds",
-    mobile: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/DANCE/Didik_Take_01_30_00fps_FILTERED_MOBILE_720-002.4ds",
+    mobile: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/DANCE/Didik_Take_01_30_00fps_FILTERED_MOBILE_720.4ds",
     position: [0, 0, 0],
     isLarge: true,
     maxWaitMs: 480000
@@ -39,7 +39,7 @@ const VIDEO_LIBRARY = {
   },
   "music-greybeard": {
     name: "Musisi",
-    desktop: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/MUSIC/Greybeard_60fps_MOBILE_720.4ds",
+    desktop: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/MUSIC/Greybeard_60fps_DESKTOP_720.4ds",
     mobile: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/MUSIC/Greybeard_60fps_MOBILE_720.4ds",
     position: [0, 0, 0],
     hasAudio: true
@@ -321,6 +321,29 @@ function loadVideo(videoId, options = {}) {
 
     // Clear placed meshes array (don't dispose, they're either the original or already disposed)
     arPlacedMeshes = [];
+
+    // Remove and recreate reticle to prevent double reticle issue
+    if (reticle) {
+      console.log('[Volumetrik] Removing old reticle');
+      scene.remove(reticle);
+      if (reticle.geometry) reticle.geometry.dispose();
+      if (reticle.material) reticle.material.dispose();
+      reticle = null;
+    }
+
+    // Recreate reticle for new video
+    reticle = new THREE.Mesh(
+      new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    );
+    reticle.matrixAutoUpdate = false;
+    reticle.visible = false;
+    scene.add(reticle);
+    console.log('[Volumetrik] Created new reticle for video switch');
+
+    // Reset hit test
+    hitTestSourceRequested = false;
+    hitTestSource = null;
 
     // Don't exit AR session - let user stay in AR mode
     console.log('[Volumetrik] Staying in AR mode, will hide new mesh for SLAM placement');
@@ -996,6 +1019,9 @@ function onARSessionEnd() {
   document.removeEventListener('touchstart', onARTouchStart);
   document.removeEventListener('touchmove', onARTouchMove);
   document.removeEventListener('touchend', onARTouchEnd);
+  canvas.removeEventListener('touchstart', onARTouchStart);
+  canvas.removeEventListener('touchmove', onARTouchMove);
+  canvas.removeEventListener('touchend', onARTouchEnd);
 
   // Reset touch state
   arTouchState = {
@@ -1075,27 +1101,41 @@ function onARSelect() {
 
   try {
     // If reticle exists and has a valid position, use it
-    if (reticle && reticle.matrix) {
-      mesh.position.setFromMatrixPosition(reticle.matrix);
-      console.log('[Volumetrik] AR: Placed at reticle position');
+    if (reticle && reticle.visible) {
+      if (reticle.matrix && reticle.matrix.elements.some(e => e !== 0)) {
+        // Use hit test matrix position
+        mesh.position.setFromMatrixPosition(reticle.matrix);
+        console.log('[Volumetrik] AR: Placed at reticle matrix position');
+      } else if (reticle.position) {
+        // Use reticle's direct position (fallback positioning)
+        mesh.position.copy(reticle.position);
+        console.log('[Volumetrik] AR: Placed at reticle position');
+      } else {
+        // Last resort: 1m in front at eye level
+        const cameraDirection = new THREE.Vector3();
+        camera.getWorldDirection(cameraDirection);
+        mesh.position.copy(camera.position).add(cameraDirection.multiplyScalar(1.0));
+        console.log('[Volumetrik] AR: Placed at fallback position (1m in front)');
+      }
     } else {
-      // Fallback: place 1m in front of camera
+      // No reticle: place 1m in front at eye level
       const cameraDirection = new THREE.Vector3();
       camera.getWorldDirection(cameraDirection);
       mesh.position.copy(camera.position).add(cameraDirection.multiplyScalar(1.0));
-      mesh.position.y = camera.position.y - 0.5;
-      console.log('[Volumetrik] AR: Placed at fallback position (1m in front)');
+      console.log('[Volumetrik] AR: Placed at fallback position (no reticle)');
     }
 
-    // Make mesh visible and set AR scale (1.5 = human scale, 5x bigger than 0.3)
+    // Make mesh visible and set AR scale (0.3 = human scale)
     mesh.visible = true;
-    mesh.scale.set(1.5, 1.5, 1.5);
-    mesh.lookAt(camera.position);
+    mesh.scale.set(0.3, 0.3, 0.3);
+
+    // Reset rotation to face forward (0,0,0) - don't use lookAt which makes it face camera
+    mesh.rotation.set(0, 0, 0);
 
     // Add to placed meshes for manipulation
     arPlacedMeshes.push(mesh);
 
-    console.log('[Volumetrik] AR: Actor placed at human scale (1.5x)');
+    console.log('[Volumetrik] AR: Actor placed at human scale (0.3x)');
   } catch (error) {
     console.error('[Volumetrik] AR select failed:', error);
   }
@@ -1145,8 +1185,21 @@ function handleARHitTest(frame) {
       reticle.visible = true;
     }
   } else if (reticle && isARMode) {
-    // No hit test available, show reticle at a fixed position in front of camera
+    // No hit test available, position reticle 1m in front of camera at eye level
     reticle.visible = true;
+    const cameraDirection = new THREE.Vector3();
+    camera.getWorldDirection(cameraDirection);
+
+    // Position 1m forward from camera, keep the camera's Y height (eye level)
+    const position = camera.position.clone();
+    const forwardOffset = cameraDirection.multiplyScalar(1.0);
+    forwardOffset.y = 0; // Don't move vertically, keep camera's Y
+    position.add(forwardOffset);
+
+    reticle.position.copy(position);
+    reticle.rotation.x = -Math.PI / 2; // Face up
+    reticle.updateMatrixWorld(true);
+    console.log('[Volumetrik] Reticle fallback position:', position, 'Camera pos:', camera.position);
   }
 }
 
@@ -1155,13 +1208,21 @@ function setupARGestureControls() {
   document.removeEventListener('touchstart', onARTouchStart);
   document.removeEventListener('touchmove', onARTouchMove);
   document.removeEventListener('touchend', onARTouchEnd);
+  canvas.removeEventListener('touchstart', onARTouchStart);
+  canvas.removeEventListener('touchmove', onARTouchMove);
+  canvas.removeEventListener('touchend', onARTouchEnd);
 
-  // Add new listeners
+  // Add listeners to both document and canvas to ensure touch events are captured
   document.addEventListener('touchstart', onARTouchStart, { passive: false });
   document.addEventListener('touchmove', onARTouchMove, { passive: false });
   document.addEventListener('touchend', onARTouchEnd, { passive: false });
 
-  console.log('[Volumetrik] AR gesture controls enabled');
+  // Also add to canvas directly for better responsiveness
+  canvas.addEventListener('touchstart', onARTouchStart, { passive: false });
+  canvas.addEventListener('touchmove', onARTouchMove, { passive: false });
+  canvas.addEventListener('touchend', onARTouchEnd, { passive: false });
+
+  console.log('[Volumetrik] AR gesture controls enabled on document and canvas');
 }
 
 function onARTouchStart(event) {
@@ -1223,15 +1284,15 @@ function onARTouchMove(event) {
   }
 
   if (event.touches.length === 1 && arTouchState.isDragging) {
-    // Single finger drag - rotate the actor around Y axis
+    // Single finger drag - rotate the actor around Z axis
     const touch = event.touches[0];
     const previousTouch = arTouchState.touches[0];
 
     if (previousTouch) {
       const deltaX = touch.clientX - previousTouch.clientX;
       // Reduced sensitivity from 0.01 to 0.005 (half as sensitive)
-      arTouchState.selectedMesh.rotation.y -= deltaX * 0.005;
-      console.log('[Volumetrik] AR: Rotating, deltaX:', deltaX, 'rotation.y:', arTouchState.selectedMesh.rotation.y);
+      arTouchState.selectedMesh.rotation.z -= deltaX * 0.005;
+      console.log('[Volumetrik] AR: Rotating, deltaX:', deltaX, 'rotation.z:', arTouchState.selectedMesh.rotation.z);
     }
 
     arTouchState.touches = Array.from(event.touches);
@@ -1291,6 +1352,10 @@ function animate() {
   renderer.setAnimationLoop((timestamp, frame) => {
     if (isARMode && frame) {
       handleARHitTest(frame);
+      // Also update playback UI in AR mode
+      if (currentSequence && currentSequence.isLoaded) {
+        updatePlaybackUI();
+      }
     } else {
       if (currentSequence && currentSequence.isLoaded) {
         updatePlaybackUI();

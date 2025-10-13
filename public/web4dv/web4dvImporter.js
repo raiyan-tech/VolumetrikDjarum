@@ -167,7 +167,26 @@ export default class WEB4DS {
 
         this.Decode()  // Start decoding, downloading
 
-        this.loadAudio(this.urlA)
+        // Poll for audio track to be loaded (embedded in .4ds file)
+        let audioCheckAttempts = 0;
+        const maxAudioCheckAttempts = 25; // 25 * 200ms = 5 seconds max
+        const audioCheckInterval = setInterval(() => {
+          audioCheckAttempts++;
+
+          // Check if audio track has been populated by the streaming process
+          const hasAudio = resourceManager._audioTrack
+            && (resourceManager._audioTrack.byteLength > 0 || resourceManager._audioTrack.length > 0);
+
+          if (hasAudio) {
+            console.log('[WEB4DS] Audio track detected after', audioCheckAttempts * 200, 'ms, loading audio');
+            clearInterval(audioCheckInterval);
+            this.loadAudio(this.urlA);
+          } else if (audioCheckAttempts >= maxAudioCheckAttempts) {
+            console.log('[WEB4DS] Audio track not found after 5 seconds, giving up');
+            clearInterval(audioCheckInterval);
+            this.loadAudio(this.urlA); // Try anyway, will show "no audio" message
+          }
+        }, 200);
 
         const waiterHtml = document.getElementById('web4dv-waiter')
 
@@ -350,26 +369,49 @@ export default class WEB4DS {
 
   loadAudio(audioFile) {
     if (typeof this.camera !== 'undefined') {
+      console.log('[WEB4DS] Initializing audio system');
       this.model4D.initAudio(this.audioCtx)
 
       this.camera.add(this.model4D.audioListener)
       this.gainNode = this.audioCtx.createGain()
 
+      // Debug: Check what audioTrack actually is
+      console.log('[WEB4DS] audioFile:', audioFile);
+      console.log('[WEB4DS] resourceManager._audioTrack type:', typeof resourceManager._audioTrack);
+      console.log('[WEB4DS] resourceManager._audioTrack value:', resourceManager._audioTrack);
+      console.log('[WEB4DS] resourceManager._audioTrack is Array:', Array.isArray(resourceManager._audioTrack));
+
+      // Check for embedded audio - handle both ArrayBuffer (has byteLength) and Array (has length)
+      const hasAudioTrack = typeof resourceManager._audioTrack !== 'undefined'
+        && resourceManager._audioTrack !== null
+        && (
+          (resourceManager._audioTrack.byteLength && resourceManager._audioTrack.byteLength > 0) ||
+          (Array.isArray(resourceManager._audioTrack) && resourceManager._audioTrack.length > 0)
+        );
+
       if (audioFile !== '') {
-        console.log(`loading audio file: ${audioFile}`)
+        console.log('[WEB4DS] Loading external audio file:', audioFile)
 
         this.model4D.loadAudioFile(audioFile, this.isAudioloaded, () => {
           this.gainNode.gain.value = 1.0
           this.isAudioloaded = true
+          console.log('[WEB4DS] External audio file loaded successfully');
         })
-      } else if (resourceManager._audioTrack !== 'undefined' && resourceManager._audioTrack !== [] && resourceManager._audioTrack != '') {
-        console.log('loading internal audio ')
+      } else if (hasAudioTrack) {
+        const trackSize = resourceManager._audioTrack.byteLength || resourceManager._audioTrack.length || 0;
+        console.log('[WEB4DS] Loading embedded audio track, size:', trackSize, 'bytes');
 
         this.audioCtx.decodeAudioData(resourceManager._audioTrack, (buffer) => {
+          console.log('[WEB4DS] Audio decoded successfully, duration:', buffer.duration, 'channels:', buffer.numberOfChannels);
           this.model4D.setAudioBuffer(buffer)
           this.gainNode.gain.value = 1.0
           this.isAudioloaded = true
+          console.log('[WEB4DS] Embedded audio loaded and ready');
+        }, (error) => {
+          console.error('[WEB4DS] Failed to decode audio:', error);
         })
+      } else {
+        console.log('[WEB4DS] No audio track found for this video');
       }
     } else {
       alert('Please add a camera to your scene or set your camera to var = camera. AudioListener not attached.')
@@ -378,10 +420,31 @@ export default class WEB4DS {
 
   playAudio() {
     if (this.isAudioplaying === false) {
-      // Check if audio is loaded before attempting to play
-      if (!this.model4D || !this.model4D.audioSound || !this.model4D.audioSound.buffer) {
-        console.warn('[WEB4DS] Audio not loaded, skipping audio playback');
+      // Check if audio is loaded and has buffer
+      console.log('[WEB4DS] playAudio called - isAudioloaded:', this.isAudioloaded);
+      console.log('[WEB4DS] model4D exists:', !!this.model4D);
+      console.log('[WEB4DS] audioSound exists:', !!this.model4D?.audioSound);
+      console.log('[WEB4DS] audioSound buffer exists:', !!this.model4D?.audioSound?.buffer);
+      console.log('[WEB4DS] audioSound isPlaying:', this.model4D?.audioSound?.isPlaying);
+
+      if (!this.isAudioloaded) {
+        console.warn('[WEB4DS] Audio not loaded yet, skipping audio playback');
         return;
+      }
+
+      if (!this.model4D || !this.model4D.audioSound || !this.model4D.audioSound.buffer) {
+        console.warn('[WEB4DS] Audio buffer not available, skipping audio playback');
+        return;
+      }
+
+      // Resume audio context if suspended (browser autoplay policy)
+      if (this.audioCtx.state === 'suspended') {
+        console.log('[WEB4DS] Resuming suspended audio context');
+        this.audioCtx.resume().then(() => {
+          console.log('[WEB4DS] Audio context resumed successfully');
+        }).catch(err => {
+          console.error('[WEB4DS] Failed to resume audio context:', err);
+        });
       }
 
       this.audioTrack = this.audioCtx.createBufferSource()
@@ -393,11 +456,12 @@ export default class WEB4DS {
 
       this.audioStartOffset = this.currentFrame / resourceManager._sequenceInfo.FrameRate
 
+      console.log('[WEB4DS] Starting audio playback at offset:', this.audioStartOffset, 'context time:', this.audioCtx.currentTime);
       this.audioTrack.start(this.audioCtx.currentTime, this.audioStartOffset)
-      // console.log(`start audio at time ${this.audioStartOffset} ; ${this.audioCtx.currentTime}`)
 
       this.isAudioplaying = true
       this.audioStartTime = this.audioCtx.currentTime
+      console.log('[WEB4DS] Audio playback started successfully');
     }
   }
 

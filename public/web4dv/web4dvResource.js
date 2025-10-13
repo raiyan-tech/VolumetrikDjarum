@@ -129,7 +129,7 @@ class BlocInfo {
 
 export default class ResourceManagerXHR {
   constructor() {
-    this._internalCacheSize = 20000000
+    this._internalCacheSize = 40000000  // 40MB - increased from 20MB for better large file streaming
 
     this._sequenceInfo = {
       NbFrames: 0,

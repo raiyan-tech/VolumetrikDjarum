@@ -165,6 +165,11 @@ export default class Model4D {
   setAudioBuffer(buffer) {
     this.audioSound.setBuffer(buffer)
     this.audioSound.setLoop(false)
-    this.audioSound.setVolume(0)
+    this.audioSound.setVolume(1.0)
+    // Add the positional audio to the mesh for spatial audio
+    if (this.mesh && !this.mesh.children.includes(this.audioSound)) {
+      this.mesh.add(this.audioSound)
+      console.log('[Model4D] Added positional audio to mesh')
+    }
   }
 }

@@ -170,6 +170,12 @@ export default class ResourceManagerXHR {
 
   SetXHR(firstByte, lastByte) {
     const xhr = new XMLHttpRequest()
+
+    if (!this._file4ds) {
+      console.error('[ResourceManager] No 4DS file set! Cannot create XHR request.')
+      return null
+    }
+
     xhr.open('GET', this._file4ds)
     // xhr.onreadystatechange = handler;
     xhr.responseType = 'arraybuffer'
@@ -185,6 +191,11 @@ export default class ResourceManagerXHR {
   getOneChunk(position) {
     // console.log(`request range ${position} - ${position + 9}`)
     const xhr = this.SetXHR(position, position + 9)
+
+    if (!xhr) {
+      console.error('[ResourceManager] Failed to create XHR for getOneChunk')
+      return
+    }
 
     const parent = this
 
@@ -251,6 +262,12 @@ export default class ResourceManagerXHR {
 
     const xhr = this.SetXHR(pos0, pos1)
     // console.log(`request range ${pos0} - ${pos1}`)
+
+    if (!xhr) {
+      console.error('[ResourceManager] Failed to create XHR for getBunchOfChunks')
+      this._isDownloading = false
+      return
+    }
 
     const parent = this
 
@@ -493,5 +510,20 @@ export default class ResourceManagerXHR {
 
   set4DSFile(file) {
     this._file4ds = file
+  }
+
+  reset() {
+    // Reset the resource manager for a new video load
+    this._isInitialized = false
+    this._isDownloading = false
+    this._currentBlocIndex = 0
+    this._firstBlocIndex = 0
+    this._lastBlocIndex = 0
+    this._blocInfos = []
+    this._KFPositions = []
+    this._pointerToSequenceInfo = 0
+    this._pointerToBlocIndex = 0
+    this._pointerToTrackIndex = 0
+    console.log('[ResourceManager] Reset complete')
   }
 }
