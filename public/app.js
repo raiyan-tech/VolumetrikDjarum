@@ -98,7 +98,10 @@ let arOverlayEl;
 let arHintEl;
 let arModeIndicatorEl;
 let arResetBtn;
+let arMoveBtn;
+let arRotateBtn;
 let arHintTimeout = null;
+let arCurrentMode = 'rotate'; // Default mode: rotate
 
 let hasInitialized = false;
 let resizeTimeout = null;
@@ -112,9 +115,7 @@ let arTouchState = {
   initialScale: 1,
   selectedMesh: null,
   isDragging: false,
-  isMoving: false,
-  longPressTimer: null,
-  longPressStartPos: null
+  isMoving: false
 };
 
 // AR Performance: Position clamping boundaries (prevent actor from going too far)
@@ -151,10 +152,20 @@ function init() {
   arHintEl = document.getElementById('ar-hint');
   arModeIndicatorEl = document.getElementById('ar-mode-indicator');
   arResetBtn = document.getElementById('ar-reset-btn');
+  arMoveBtn = document.getElementById('ar-move-btn');
+  arRotateBtn = document.getElementById('ar-rotate-btn');
 
   // AR reset button handler
   if (arResetBtn) {
     arResetBtn.addEventListener('click', resetARPlacement);
+  }
+
+  // AR mode toggle button handlers
+  if (arMoveBtn) {
+    arMoveBtn.addEventListener('click', () => setARMode('move'));
+  }
+  if (arRotateBtn) {
+    arRotateBtn.addEventListener('click', () => setARMode('rotate'));
   }
 
   // Combined iteration - performance optimization
@@ -1080,6 +1091,28 @@ function hideARModeIndicator() {
   }
 }
 
+function setARMode(mode) {
+  if (!isARMode || arPlacedMeshes.length === 0) return;
+
+  arCurrentMode = mode;
+
+  // Update button states
+  if (arMoveBtn && arRotateBtn) {
+    arMoveBtn.classList.toggle('active', mode === 'move');
+    arRotateBtn.classList.toggle('active', mode === 'rotate');
+  }
+
+  // Update mode indicator
+  showARModeIndicator(mode);
+
+  // Haptic feedback
+  if (navigator.vibrate) {
+    navigator.vibrate(30);
+  }
+
+  console.log('[Volumetrik] AR: Mode changed to', mode);
+}
+
 function resetARPlacement() {
   if (!isARMode || arPlacedMeshes.length === 0) return;
 
@@ -1312,18 +1345,13 @@ function onARSessionEnd() {
   canvas.removeEventListener('touchend', onARTouchEnd);
 
   // Reset touch state
-  if (arTouchState.longPressTimer) {
-    clearTimeout(arTouchState.longPressTimer);
-  }
   arTouchState = {
     touches: [],
     initialDistance: 0,
     initialScale: 1,
     selectedMesh: null,
     isDragging: false,
-    isMoving: false,
-    longPressTimer: null,
-    longPressStartPos: null
+    isMoving: false
   };
 
   // Restore scene background
@@ -1477,8 +1505,11 @@ function onARSelect() {
 
     // Show manipulation hints
     hideARHint();
-    showARHint('Drag to rotate • Hold to move • Pinch to scale', 5000);
+    showARHint('Use buttons to switch Move/Rotate • Pinch to scale', 5000);
     showARModeIndicator('rotate');
+
+    // Set rotate mode as default and update button states
+    setARMode('rotate');
   } catch (error) {
     console.error('[Volumetrik] AR select failed:', error);
   }
@@ -1583,7 +1614,9 @@ function onARTouchStart(event) {
     element.closest('#controls-container') ||
     element.closest('#video-selector') ||
     element.closest('.control-button') ||
-    element.id === 'ar-button'
+    element.closest('.ar-mode-buttons') ||
+    element.id === 'ar-button' ||
+    element.id === 'ar-reset-btn'
   )) {
     return; // Let the UI element handle the touch
   }
@@ -1598,50 +1631,35 @@ function onARTouchStart(event) {
 
   // Otherwise, handle manipulation
   if (arPlacedMeshes.length > 0) {
-    console.log('[Volumetrik] AR: Touch for manipulation, fingers:', event.touches.length);
+    console.log('[Volumetrik] AR: Touch for manipulation, fingers:', event.touches.length, 'mode:', arCurrentMode);
     arTouchState.touches = Array.from(event.touches);
 
     if (event.touches.length === 1) {
-      // Single touch - start with rotation enabled, switch to move mode if long press completes
+      // Single touch - use current mode (rotate or move)
       const touch = event.touches[0];
       arTouchState.selectedMesh = arPlacedMeshes[0];
-      arTouchState.longPressStartPos = { x: touch.clientX, y: touch.clientY };
-      arTouchState.isDragging = true; // Enable rotation immediately for light touches
 
-      // Show rotation mode indicator
-      showARModeIndicator('rotate');
-
-      // Start long-press timer (500ms) - will switch to move mode if user holds still
-      arTouchState.longPressTimer = setTimeout(() => {
-        // Long press detected without significant movement - activate move mode
+      if (arCurrentMode === 'rotate') {
+        arTouchState.isDragging = true;
+        arTouchState.isMoving = false;
+        showARModeIndicator('rotate');
+      } else if (arCurrentMode === 'move') {
         arTouchState.isMoving = true;
-        arTouchState.isDragging = false; // Disable rotation, enable move
-        console.log('[Volumetrik] AR: MOVE MODE ACTIVATED - Hold and drag to reposition on floor');
-
-        // Show move mode indicator
+        arTouchState.isDragging = false;
         showARModeIndicator('move');
-
-        // Add stronger haptic feedback
-        if (navigator.vibrate) {
-          navigator.vibrate(100); // Longer vibration for move mode
-        }
-      }, 500);
-
-      console.log('[Volumetrik] AR: Single touch started - rotation enabled, long-press for move mode');
-      event.preventDefault();
-    } else if (event.touches.length === 2) {
-      // Two fingers - scale mode
-      // Cancel long press timer if active
-      if (arTouchState.longPressTimer) {
-        clearTimeout(arTouchState.longPressTimer);
-        arTouchState.longPressTimer = null;
       }
 
+      console.log('[Volumetrik] AR: Single touch started -', arCurrentMode, 'mode active');
+      event.preventDefault();
+    } else if (event.touches.length === 2) {
+      // Two fingers - scale mode (overrides current mode)
       const dx = event.touches[0].clientX - event.touches[1].clientX;
       const dy = event.touches[0].clientY - event.touches[1].clientY;
       arTouchState.initialDistance = Math.sqrt(dx * dx + dy * dy);
       arTouchState.initialScale = arPlacedMeshes[0].scale.x;
       arTouchState.selectedMesh = arPlacedMeshes[0];
+      arTouchState.isDragging = false;
+      arTouchState.isMoving = false;
 
       // Show scale mode indicator
       showARModeIndicator('scale');
@@ -1662,14 +1680,6 @@ function onARTouchMove(event) {
   const touch = event.touches[0];
 
   if (event.touches.length === 1) {
-    // If finger moves at all, cancel long press timer (user is actively dragging for rotation)
-    if (arTouchState.longPressTimer) {
-      clearTimeout(arTouchState.longPressTimer);
-      arTouchState.longPressTimer = null;
-      // Keep isDragging true for rotation
-      console.log('[Volumetrik] AR: Movement detected, staying in ROTATION mode (long-press cancelled)');
-    }
-
     if (arTouchState.isMoving) {
       // Move mode - translate touch movement to floor plane (XZ)
       const previousTouch = arTouchState.touches[0];
@@ -1749,19 +1759,12 @@ function onARTouchMove(event) {
 function onARTouchEnd(event) {
   if (!isARMode) return;
 
-  // Clear long press timer if active
-  if (arTouchState.longPressTimer) {
-    clearTimeout(arTouchState.longPressTimer);
-    arTouchState.longPressTimer = null;
-  }
-
   if (event.touches.length === 0) {
     // All fingers lifted - reset state
     arTouchState.isDragging = false;
     arTouchState.isMoving = false;
     arTouchState.selectedMesh = null;
     arTouchState.touches = [];
-    arTouchState.longPressStartPos = null;
 
     // Hide mode indicator when all touches end
     hideARModeIndicator();
