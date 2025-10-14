@@ -1708,15 +1708,16 @@ function onARTouchMove(event) {
         console.log('[Volumetrik] AR: Moving on floor, delta:', deltaX, deltaY, 'position:', arTouchState.selectedMesh.position);
       }
     } else if (arTouchState.isDragging) {
-      // Rotation mode - rotate the actor around its local Y axis (vertical spin)
+      // Rotation mode - rotate ONLY around Z axis (horizontal spin like a turntable)
       const previousTouch = arTouchState.touches[0];
 
       if (previousTouch) {
         const deltaX = touch.clientX - previousTouch.clientX;
-        // Rotate around Y axis (vertical) for natural spinning motion around object's center
-        // Reduced sensitivity from 0.01 to 0.005 (half as sensitive)
-        arTouchState.selectedMesh.rotation.y += deltaX * 0.005;
-        console.log('[Volumetrik] AR: Rotating around local Y, deltaX:', deltaX, 'rotation.y:', arTouchState.selectedMesh.rotation.y);
+        // Lock X and Y rotation, only allow Z-axis rotation
+        arTouchState.selectedMesh.rotation.x = 0; // Lock X axis
+        arTouchState.selectedMesh.rotation.y = 0; // Lock Y axis
+        arTouchState.selectedMesh.rotation.z += deltaX * 0.005; // Only rotate around Z
+        console.log('[Volumetrik] AR: Rotating around Z axis only, deltaX:', deltaX, 'rotation.z:', arTouchState.selectedMesh.rotation.z);
       }
     }
 
