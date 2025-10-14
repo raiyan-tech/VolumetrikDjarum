@@ -1704,8 +1704,8 @@ function onARTouchMove(event) {
 
         // Move on floor plane: deltaX = left/right, deltaY = forward/back
         const worldMovement = new THREE.Vector3();
-        worldMovement.addScaledVector(right, -deltaX * movementScale); // Left/right movement (inverted to match drag direction)
-        worldMovement.addScaledVector(cameraDirection, deltaY * movementScale); // Forward/back movement
+        worldMovement.addScaledVector(right, deltaX * movementScale); // Left/right movement (matches swipe direction)
+        worldMovement.addScaledVector(cameraDirection, -deltaY * movementScale); // Forward/back movement (inverted for natural feel)
 
         // Apply movement but keep Y coordinate locked (stay on floor level)
         const currentY = arTouchState.selectedMesh.position.y;
@@ -1723,11 +1723,11 @@ function onARTouchMove(event) {
 
       if (previousTouch) {
         const deltaX = touch.clientX - previousTouch.clientX;
-        // Lock X and Y rotation, only allow Z-axis rotation
-        arTouchState.selectedMesh.rotation.x = 0; // Lock X axis
-        arTouchState.selectedMesh.rotation.y = 0; // Lock Y axis
-        arTouchState.selectedMesh.rotation.z += deltaX * 0.005; // Only rotate around Z
-        console.log('[Volumetrik] AR: Rotating around Z axis only, deltaX:', deltaX, 'rotation.z:', arTouchState.selectedMesh.rotation.z);
+        // Only apply rotation if there's actual movement to avoid jitter
+        if (Math.abs(deltaX) > 0) {
+          arTouchState.selectedMesh.rotation.z += deltaX * 0.005; // Only rotate around Z
+          console.log('[Volumetrik] AR: Rotating around Z axis only, deltaX:', deltaX, 'rotation.z:', arTouchState.selectedMesh.rotation.z);
+        }
       }
     }
 
