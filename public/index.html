@@ -232,7 +232,7 @@
       position: absolute;
       bottom: calc(env(safe-area-inset-bottom, 24px) + 260px); /* Raised above timeline */
       right: 16px;
-      z-index: 105;
+      z-index: 110; /* Higher than AR overlay (95) */
       background: rgba(15, 23, 42, 0.95);
       backdrop-filter: blur(12px);
       padding: 16px;
@@ -243,6 +243,7 @@
       flex-direction: column;
       gap: 12px;
       min-width: 200px;
+      pointer-events: auto; /* Ensure clicks work */
     }
 
     .cache-panel.show {
@@ -282,7 +283,7 @@
       position: absolute;
       bottom: calc(env(safe-area-inset-bottom, 24px) + 260px); /* Raised above timeline */
       right: 16px;
-      z-index: 104;
+      z-index: 109; /* Higher than AR overlay, below panel */
       background: rgba(99, 102, 241, 0.9);
       color: white;
       border: none;
@@ -296,6 +297,7 @@
       justify-content: center;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
       transition: all 0.2s ease;
+      pointer-events: auto; /* Ensure clicks work */
     }
 
     .cache-toggle-btn:active {

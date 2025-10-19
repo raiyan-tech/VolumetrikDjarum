@@ -973,18 +973,36 @@ function seekToFrame(targetFrame) {
   const frameRate = currentSequence.frameRate || 30;
   const clampedFrame = Math.max(0, Math.min(targetFrame, totalFrames - 1));
 
-  logger.log('[Volumetrik] Seeking to frame', clampedFrame);
+  logger.log('[Volumetrik] Seeking to frame', clampedFrame, 'from', currentSequence.currentFrame);
 
   // Update the frame offset which controls playback position
   currentSequence.frameOffset = clampedFrame;
 
   // If playing, we need to restart the playback from the new position
   if (isPlaying) {
-    currentSequence.pause();
-    currentSequence.play(true);
+    try {
+      currentSequence.pause();
+      // Small delay to ensure pause completes before restarting
+      setTimeout(() => {
+        if (currentSequence && currentSequence.isLoaded) {
+          currentSequence.play(true);
+          logger.log('[Volumetrik] Resumed playback from frame', clampedFrame);
+        }
+      }, 50);
+    } catch (error) {
+      logger.error('[Volumetrik] Error during seek playback:', error);
+    }
   } else {
     // If paused, update the current frame for display
-    currentSequence.currentFrame = clampedFrame;
+    try {
+      currentSequence.currentFrame = clampedFrame;
+      // Force a frame update to ensure the new frame is displayed
+      if (currentSequence.update) {
+        currentSequence.update();
+      }
+    } catch (error) {
+      logger.error('[Volumetrik] Error updating frame:', error);
+    }
   }
 
   // Update timeline UI
@@ -2007,10 +2025,14 @@ function setupCacheEventListeners() {
 
   // Cache toggle button
   if (cacheToggleBtn) {
-    cacheToggleBtn.addEventListener('click', (e) => {
+    cacheToggleBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       if (cachePanel) {
-        cachePanel.classList.toggle('show');
+        const isShowing = cachePanel.classList.toggle('show');
+        // Update cache info whenever panel opens
+        if (isShowing) {
+          await updateCachePanel();
+        }
       }
     });
   }
