@@ -1,6 +1,11 @@
 import WEB4DS from "./web4dv/web4dvImporter.js";
 import CacheManager from "./CacheManager.js";
 
+// App version for debugging
+const APP_VERSION = '2.0.0-opt-20251019';
+console.log(`%c🎬 Volumetrik Player v${APP_VERSION}`, 'color: #6366f1; font-size: 16px; font-weight: bold;');
+console.log('%cPerformance optimizations active ✓', 'color: #10b981; font-weight: bold;');
+
 // Debug mode - disable console logs in production for better performance
 const DEBUG_MODE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const logger = {

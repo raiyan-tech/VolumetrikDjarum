@@ -1,8 +1,8 @@
 // Service Worker for Volumetrik Player
 // Optimized for HTTP/3/QUIC with Range request pass-through
 
-const CACHE_VERSION = 'volumetrik-v1';
-const STATIC_CACHE = 'volumetrik-static-v1';
+const CACHE_VERSION = 'volumetrik-v2-20251019';
+const STATIC_CACHE = 'volumetrik-static-v2-20251019';
 
 // Files to cache for offline functionality (UI assets only, not video data)
 const STATIC_ASSETS = [
@@ -30,6 +30,7 @@ self.addEventListener('install', (event) => {
   );
 
   // Force the waiting service worker to become the active service worker
+  // This ensures new versions activate immediately
   self.skipWaiting();
 });
 
@@ -51,6 +52,7 @@ self.addEventListener('activate', (event) => {
   );
 
   // Take control of all clients immediately
+  // This ensures the new SW controls pages without requiring a reload
   return self.clients.claim();
 });
 
@@ -161,4 +163,12 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded');
+// Handle messages from clients to force update
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    console.log('[SW] Received SKIP_WAITING message, activating new version');
+    self.skipWaiting();
+  }
+});
+
+console.log('[SW] Service Worker loaded - Version:', CACHE_VERSION);
