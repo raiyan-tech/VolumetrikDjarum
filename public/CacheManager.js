@@ -2,6 +2,14 @@
 // IndexedDB-based caching system for 4DS volumetric video files
 // Optimized for mobile devices to enable offline playback
 
+// Debug mode - disable console logs in production for better performance
+const DEBUG_MODE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const logger = {
+  log: DEBUG_MODE ? console.log.bind(console) : () => {},
+  warn: DEBUG_MODE ? console.warn.bind(console) : () => {},
+  error: console.error.bind(console), // Always log errors
+};
+
 const DB_NAME = 'Volumetrik4DSCache';
 const DB_VERSION = 1;
 const STORE_NAME = 'videos';
@@ -20,13 +28,13 @@ class CacheManager {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = () => {
-        console.error('[CacheManager] Failed to open IndexedDB:', request.error);
+        logger.error('[CacheManager] Failed to open IndexedDB:', request.error);
         reject(request.error);
       };
 
       request.onsuccess = () => {
         this.db = request.result;
-        console.log('[CacheManager] IndexedDB initialized');
+        logger.log('[CacheManager] IndexedDB initialized');
         resolve(this.db);
       };
 
@@ -38,7 +46,7 @@ class CacheManager {
           const objectStore = db.createObjectStore(STORE_NAME, { keyPath: 'videoId' });
           objectStore.createIndex('timestamp', 'timestamp', { unique: false });
           objectStore.createIndex('size', 'size', { unique: false });
-          console.log('[CacheManager] Created object store:', STORE_NAME);
+          logger.log('[CacheManager] Created object store:', STORE_NAME);
         }
       };
     });
@@ -51,12 +59,12 @@ class CacheManager {
     try {
       await this.init();
 
-      console.log('[CacheManager] Starting cache download for', videoId, 'from', url);
+      logger.log('[CacheManager] Starting cache download for', videoId, 'from', url);
 
       // Check if already cached
       const existing = await this.getCachedVideo(videoId);
       if (existing) {
-        console.log('[CacheManager] Video already cached:', videoId);
+        logger.log('[CacheManager] Video already cached:', videoId);
         return { success: true, fromCache: true };
       }
 
@@ -70,7 +78,7 @@ class CacheManager {
       const contentLength = response.headers.get('Content-Length');
       const total = contentLength ? parseInt(contentLength, 10) : 0;
 
-      console.log('[CacheManager] Downloading', videoId, 'Size:', (total / 1024 / 1024).toFixed(1), 'MB');
+      logger.log('[CacheManager] Downloading', videoId, 'Size:', (total / 1024 / 1024).toFixed(1), 'MB');
 
       // Read the response body as a stream for progress tracking
       const reader = response.body.getReader();
@@ -107,7 +115,7 @@ class CacheManager {
       // Create blob from the combined data
       const blob = new Blob([allChunks], { type: 'application/octet-stream' });
 
-      console.log('[CacheManager] Downloaded', videoId, 'Size:', (blob.size / 1024 / 1024).toFixed(1), 'MB');
+      logger.log('[CacheManager] Downloaded', videoId, 'Size:', (blob.size / 1024 / 1024).toFixed(1), 'MB');
 
       // Store in IndexedDB
       const cacheEntry = {
@@ -120,12 +128,12 @@ class CacheManager {
 
       await this._putEntry(cacheEntry);
 
-      console.log('[CacheManager] Cached successfully:', videoId);
+      logger.log('[CacheManager] Cached successfully:', videoId);
 
       return { success: true, size: blob.size };
 
     } catch (error) {
-      console.error('[CacheManager] Cache failed for', videoId, ':', error);
+      logger.error('[CacheManager] Cache failed for', videoId, ':', error);
 
       // Check if it's a quota exceeded error
       if (error.name === 'QuotaExceededError' || error.message.includes('quota')) {
@@ -153,7 +161,7 @@ class CacheManager {
         request.onsuccess = () => {
           const entry = request.result;
           if (entry) {
-            console.log('[CacheManager] Found cached video:', videoId, 'Size:', (entry.size / 1024 / 1024).toFixed(1), 'MB');
+            logger.log('[CacheManager] Found cached video:', videoId, 'Size:', (entry.size / 1024 / 1024).toFixed(1), 'MB');
             resolve(entry);
           } else {
             resolve(null);
@@ -161,13 +169,13 @@ class CacheManager {
         };
 
         request.onerror = () => {
-          console.error('[CacheManager] Failed to get cached video:', request.error);
+          logger.error('[CacheManager] Failed to get cached video:', request.error);
           reject(request.error);
         };
       });
 
     } catch (error) {
-      console.error('[CacheManager] Get cache failed:', error);
+      logger.error('[CacheManager] Get cache failed:', error);
       return null;
     }
   }
@@ -189,18 +197,18 @@ class CacheManager {
         const request = objectStore.delete(videoId);
 
         request.onsuccess = () => {
-          console.log('[CacheManager] Deleted cached video:', videoId);
+          logger.log('[CacheManager] Deleted cached video:', videoId);
           resolve(true);
         };
 
         request.onerror = () => {
-          console.error('[CacheManager] Failed to delete cached video:', request.error);
+          logger.error('[CacheManager] Failed to delete cached video:', request.error);
           reject(request.error);
         };
       });
 
     } catch (error) {
-      console.error('[CacheManager] Delete cache failed:', error);
+      logger.error('[CacheManager] Delete cache failed:', error);
       return false;
     }
   }
@@ -228,13 +236,13 @@ class CacheManager {
         };
 
         request.onerror = () => {
-          console.error('[CacheManager] Failed to get all cached videos:', request.error);
+          logger.error('[CacheManager] Failed to get all cached videos:', request.error);
           reject(request.error);
         };
       });
 
     } catch (error) {
-      console.error('[CacheManager] Get all cache failed:', error);
+      logger.error('[CacheManager] Get all cache failed:', error);
       return [];
     }
   }
@@ -246,7 +254,7 @@ class CacheManager {
       const totalSize = allVideos.reduce((sum, video) => sum + (video.size || 0), 0);
       return totalSize;
     } catch (error) {
-      console.error('[CacheManager] Get total cache size failed:', error);
+      logger.error('[CacheManager] Get total cache size failed:', error);
       return 0;
     }
   }
@@ -262,18 +270,18 @@ class CacheManager {
         const request = objectStore.clear();
 
         request.onsuccess = () => {
-          console.log('[CacheManager] Cleared all cached videos');
+          logger.log('[CacheManager] Cleared all cached videos');
           resolve(true);
         };
 
         request.onerror = () => {
-          console.error('[CacheManager] Failed to clear cache:', request.error);
+          logger.error('[CacheManager] Failed to clear cache:', request.error);
           reject(request.error);
         };
       });
 
     } catch (error) {
-      console.error('[CacheManager] Clear all cache failed:', error);
+      logger.error('[CacheManager] Clear all cache failed:', error);
       return false;
     }
   }
@@ -291,7 +299,7 @@ class CacheManager {
       }
       return null;
     } catch (error) {
-      console.error('[CacheManager] Get storage quota failed:', error);
+      logger.error('[CacheManager] Get storage quota failed:', error);
       return null;
     }
   }

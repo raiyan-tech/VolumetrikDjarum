@@ -1936,6 +1936,13 @@ function updatePlaybackUI() {
 async function setupCacheSystem() {
   logger.log('[Volumetrik] Setting up cache system for mobile');
 
+  // Check if IndexedDB is available
+  if (!window.indexedDB) {
+    logger.error('[Volumetrik] IndexedDB not supported in this browser');
+    alert('Cache system requires IndexedDB support. Offline caching will not be available.');
+    return;
+  }
+
   // Initialize cache manager
   try {
     await CacheManager.init();
@@ -1952,6 +1959,7 @@ async function setupCacheSystem() {
     }
   } catch (error) {
     logger.error('[Volumetrik] Failed to initialize cache manager:', error);
+    alert('Failed to initialize cache system: ' + error.message);
     return;
   }
 
@@ -2077,6 +2085,7 @@ async function cacheVideo(videoId) {
 
   // Start caching with progress callback (throttled to avoid excessive updates)
   let lastUpdateTime = 0;
+  let lastPanelUpdate = 0;
   const result = await CacheManager.cacheVideo(videoId, url, (progress) => {
     const now = Date.now();
     // Throttle updates to every 500ms to reduce overhead
@@ -2089,12 +2098,19 @@ async function cacheVideo(videoId) {
 
     logger.log('[Volumetrik] Cache progress:', percent + '%', loadedMB + 'MB /', totalMB + 'MB');
 
+    // Update cache panel every 2 seconds during download
+    if (now - lastPanelUpdate > 2000) {
+      lastPanelUpdate = now;
+      updateCachePanel().catch(err => logger.error('[Volumetrik] Cache panel update failed:', err));
+    }
+
     renderLoadingTemplate({
       heading: 'Caching Video',
       description: `Downloading ${videoConfig.name} for offline playback...`,
       detailItems: [
         `Progress: ${percent}%`,
-        `Downloaded: ${loadedMB} MB / ${totalMB} MB`
+        `Downloaded: ${loadedMB} MB / ${totalMB} MB`,
+        `Estimated size: ${totalMB} MB`
       ],
       showSpinner: true,
       showCloseButton: false
@@ -2196,14 +2212,23 @@ function updateCacheButtonUI(videoId) {
 }
 
 async function updateCachePanel() {
-  if (!cacheSizeEl || !cacheCountEl) return;
+  if (!cacheSizeEl || !cacheCountEl) {
+    logger.warn('[Volumetrik] Cache panel elements not found');
+    return;
+  }
 
-  const allCached = await CacheManager.getAllCachedVideos();
-  const totalSize = await CacheManager.getTotalCacheSize();
+  try {
+    const allCached = await CacheManager.getAllCachedVideos();
+    const totalSize = await CacheManager.getTotalCacheSize();
 
-  const sizeMB = (totalSize / 1024 / 1024).toFixed(1);
-  cacheSizeEl.textContent = `${sizeMB} MB`;
-  cacheCountEl.textContent = allCached.length;
+    const sizeMB = (totalSize / 1024 / 1024).toFixed(1);
+    cacheSizeEl.textContent = `${sizeMB} MB`;
+    cacheCountEl.textContent = allCached.length;
+
+    logger.log('[Volumetrik] Cache panel updated:', allCached.length, 'videos,', sizeMB, 'MB');
+  } catch (error) {
+    logger.error('[Volumetrik] Failed to update cache panel:', error);
+  }
 }
 
 // Register Service Worker for HTTP/3/QUIC optimization
