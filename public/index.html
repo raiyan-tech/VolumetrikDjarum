@@ -6,10 +6,20 @@
   <meta name="description" content="Volumetric Video Streaming Demo - 4DView Player" />
   <title>Spectralysium - Preservasi Seni Gerak Demo</title>
 
-  <!-- THREE.js Library -->
-  <script src="./lib/three.min.js"></script>
-  <script src="./lib/WebGL.js"></script>
-  <script src="./lib/OrbitControls.js"></script>
+  <!-- DNS Prefetch & Preconnect for Google Cloud Storage -->
+  <link rel="dns-prefetch" href="https://storage.googleapis.com" />
+  <link rel="preconnect" href="https://storage.googleapis.com" crossorigin />
+
+  <!-- Preload Critical Assets -->
+  <link rel="preload" href="./lib/three.min.js" as="script" />
+  <link rel="preload" href="./app.js" as="script" />
+  <link rel="preload" href="./web4dv/CODEC.wasm" as="fetch" crossorigin />
+  <link rel="modulepreload" href="./web4dv/web4dvImporter.js" />
+
+  <!-- THREE.js Library - Defer for better performance -->
+  <script src="./lib/three.min.js" defer></script>
+  <script src="./lib/WebGL.js" defer></script>
+  <script src="./lib/OrbitControls.js" defer></script>
 
   <style>
     * {
@@ -869,6 +879,6 @@
     <button class="clear-btn" id="clear-all-cache-btn">Clear All Cache</button>
   </div>
 
-  <script type="module" src="./app.js?v=20251011-3"></script>
+  <script type="module" src="./app.js?v=20251019-opt" defer></script>
 </body>
 </html>

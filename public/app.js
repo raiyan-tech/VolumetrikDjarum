@@ -1,6 +1,14 @@
 import WEB4DS from "./web4dv/web4dvImporter.js";
 import CacheManager from "./CacheManager.js";
 
+// Debug mode - disable console logs in production for better performance
+const DEBUG_MODE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const logger = {
+  log: DEBUG_MODE ? console.log.bind(console) : () => {},
+  warn: DEBUG_MODE ? console.warn.bind(console) : () => {},
+  error: console.error.bind(console), // Always log errors
+};
+
 // Performance constants - optimized for HTTP/3/QUIC with smaller chunks for better loss recovery
 const CHUNK_SIZE_MOBILE = 512 * 1024;            // 512KB for mobile - better packet loss recovery
 const CHUNK_SIZE_DESKTOP = 1024 * 1024;          // 1MB for desktop - optimal for HTTP/3
@@ -136,7 +144,7 @@ const AR_MAX_DISTANCE = 10; // Maximum distance from camera (10 meters)
 function init() {
   if (hasInitialized) return;
   hasInitialized = true;
-  console.log('[Volumetrik] Initializing player');
+  logger.log('[Volumetrik] Initializing player');
 
   videoButtons = Array.from(document.querySelectorAll('.video-btn'));
   Object.keys(progressDisplays).forEach((key) => delete progressDisplays[key]);
@@ -235,7 +243,7 @@ function setupRenderer() {
       alpha: true,
       powerPreference: 'high-performance' // Request dedicated GPU when available
     });
-    console.log('[Volumetrik] Using WebGL2 context');
+    logger.log('[Volumetrik] Using WebGL2 context');
   } else if (WEBGL.isWebGLAvailable()) {
     context = canvas.getContext('webgl');
     renderer = new THREE.WebGLRenderer({
@@ -244,7 +252,7 @@ function setupRenderer() {
       alpha: true,
       powerPreference: 'high-performance' // Request dedicated GPU when available
     });
-    console.log('[Volumetrik] Using WebGL1 context');
+    logger.log('[Volumetrik] Using WebGL1 context');
   } else {
     const warning = WEBGL.getWebGLErrorMessage();
     container.appendChild(warning);
@@ -258,12 +266,16 @@ function setupRenderer() {
   // Desktop: Cap at 2x to prevent excessive rendering on ultra high-DPI screens
   const adaptivePixelRatio = IS_MOBILE ? 1 : Math.min(window.devicePixelRatio, 2);
   renderer.setPixelRatio(adaptivePixelRatio);
-  console.log('[Volumetrik] Pixel ratio:', adaptivePixelRatio, '(device:', window.devicePixelRatio + ')');
+  logger.log('[Volumetrik] Pixel ratio:', adaptivePixelRatio, '(device:', window.devicePixelRatio + ')');
 
-  // Enable shadow rendering for realistic lighting
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  console.log('[Volumetrik] Shadow rendering enabled');
+  // Enable shadow rendering for realistic lighting (disable on mobile for performance)
+  renderer.shadowMap.enabled = !IS_MOBILE;
+  if (!IS_MOBILE) {
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    logger.log('[Volumetrik] Shadow rendering enabled');
+  } else {
+    logger.log('[Volumetrik] Shadow rendering disabled on mobile for performance');
+  }
 
   renderer.xr.enabled = true;
 }
@@ -328,9 +340,9 @@ function setupEventListeners() {
         // Resume audio context on user interaction (required by browser autoplay policy)
         if (currentSequence.audioCtx && currentSequence.audioCtx.state === 'suspended') {
           currentSequence.audioCtx.resume().then(() => {
-            console.log('[Volumetrik] Audio context resumed');
+            logger.log('[Volumetrik] Audio context resumed');
           }).catch(err => {
-            console.warn('[Volumetrik] Failed to resume audio context:', err);
+            logger.warn('[Volumetrik] Failed to resume audio context:', err);
           });
         }
 
@@ -419,13 +431,13 @@ function removeSequenceMeshFromScene(sequence) {
     // Get the mesh from the sequence's model4D
     const mesh = sequence.model4D?.mesh;
     if (mesh) {
-      console.log('[Volumetrik] Removing sequence mesh from scene');
+      logger.log('[Volumetrik] Removing sequence mesh from scene');
       scene.remove(mesh);
 
       // Dispose geometry and materials to free memory
       if (mesh.geometry) {
         mesh.geometry.dispose();
-        console.log('[Volumetrik] Disposed mesh geometry');
+        logger.log('[Volumetrik] Disposed mesh geometry');
       }
       if (mesh.material) {
         if (Array.isArray(mesh.material)) {
@@ -443,24 +455,24 @@ function removeSequenceMeshFromScene(sequence) {
           if (mesh.material.metalnessMap) mesh.material.metalnessMap.dispose();
           mesh.material.dispose();
         }
-        console.log('[Volumetrik] Disposed mesh materials');
+        logger.log('[Volumetrik] Disposed mesh materials');
       }
     }
   } catch (error) {
-    console.warn('[Volumetrik] Error removing mesh from scene:', error);
+    logger.warn('[Volumetrik] Error removing mesh from scene:', error);
   }
 }
 
 async function loadVideo(videoId, options = {}) {
   // Clean up AR state when switching videos in AR mode
   if (isARMode) {
-    console.log('[Volumetrik] Cleaning up AR state before switching videos');
+    logger.log('[Volumetrik] Cleaning up AR state before switching videos');
 
     // Remove old mesh from placed meshes if it exists
     if (arPlacedMeshes.length > 0 && currentSequence) {
       const oldMesh = currentSequence.model4D?.mesh;
       if (oldMesh) {
-        console.log('[Volumetrik] AR: Removing old placed mesh from scene');
+        logger.log('[Volumetrik] AR: Removing old placed mesh from scene');
         scene.remove(oldMesh);
       }
     }
@@ -471,7 +483,7 @@ async function loadVideo(videoId, options = {}) {
 
     // Remove and recreate reticle to prevent double reticle issue
     if (reticle) {
-      console.log('[Volumetrik] Removing old reticle');
+      logger.log('[Volumetrik] Removing old reticle');
       scene.remove(reticle);
       if (reticle.geometry) reticle.geometry.dispose();
       if (reticle.material) reticle.material.dispose();
@@ -486,19 +498,19 @@ async function loadVideo(videoId, options = {}) {
     reticle.matrixAutoUpdate = false;
     reticle.visible = false;
     scene.add(reticle);
-    console.log('[Volumetrik] Created new reticle for video switch (40-50cm ring)');
+    logger.log('[Volumetrik] Created new reticle for video switch (40-50cm ring)');
 
     // Reset hit test
     hitTestSourceRequested = false;
     hitTestSource = null;
 
     // Don't exit AR session - let user stay in AR mode
-    console.log('[Volumetrik] Staying in AR mode, will hide new mesh for SLAM placement');
+    logger.log('[Volumetrik] Staying in AR mode, will hide new mesh for SLAM placement');
   }
 
   // If another load is already underway, cancel it so we can switch quickly
   if (isLoadingVideo) {
-    console.log('[Volumetrik] Cancelling in-progress load for', currentVideoId);
+    logger.log('[Volumetrik] Cancelling in-progress load for', currentVideoId);
 
     // Clear all timers to prevent race conditions
     if (progressTimer) {
@@ -518,7 +530,7 @@ async function loadVideo(videoId, options = {}) {
         // Then destroy the sequence
         currentSequence.destroy();
       } catch (destroyError) {
-        console.warn('[Volumetrik] Error destroying sequence during cancel', destroyError);
+        logger.warn('[Volumetrik] Error destroying sequence during cancel', destroyError);
       } finally {
         currentSequence = null;
       }
@@ -531,7 +543,7 @@ async function loadVideo(videoId, options = {}) {
   const targetVideoId = videoId || currentVideoId || fallbackId;
   const videoConfig = VIDEO_LIBRARY[targetVideoId];
   if (!videoConfig) {
-    console.error('[Volumetrik] Video not found', videoId);
+    logger.error('[Volumetrik] Video not found', videoId);
     openLoadingPanel();
     renderLoadingTemplate({
       heading: 'Video unavailable',
@@ -565,7 +577,7 @@ async function loadVideo(videoId, options = {}) {
   isPlaying = resumePlayback;
 
   if (!loadingEl || !loadingOverlayEl) {
-    console.error('[Volumetrik] UI not ready');
+    logger.error('[Volumetrik] UI not ready');
     isLoadingVideo = false;
     return;
   }
@@ -577,18 +589,18 @@ async function loadVideo(videoId, options = {}) {
   // Check if video is cached (mobile only)
   let cachedBlob = null;
   if (IS_MOBILE && cacheState[targetVideoId] === 'cached') {
-    console.log('[Volumetrik] Checking cache for', targetVideoId);
+    logger.log('[Volumetrik] Checking cache for', targetVideoId);
     const cachedEntry = await CacheManager.getCachedVideo(targetVideoId);
     if (cachedEntry && cachedEntry.blob) {
       cachedBlob = cachedEntry.blob;
-      console.log('[Volumetrik] Loading from cache:', targetVideoId, 'Size:', (cachedBlob.size / 1024 / 1024).toFixed(1), 'MB');
+      logger.log('[Volumetrik] Loading from cache:', targetVideoId, 'Size:', (cachedBlob.size / 1024 / 1024).toFixed(1), 'MB');
     }
   }
 
   const create = () => createSequence(targetVideoId, videoConfig, { startFrame, resumePlayback, cachedBlob });
 
   if (currentSequence) {
-    console.log('[Volumetrik] Destroying previous sequence before loading new one');
+    logger.log('[Volumetrik] Destroying previous sequence before loading new one');
     const seq = currentSequence;
 
     try {
@@ -604,11 +616,11 @@ async function loadVideo(videoId, options = {}) {
         seq.destroy(create);
       } else {
         // Fallback: if destroy doesn't exist or fails, create anyway
-        console.warn('[Volumetrik] Sequence has no destroy method, creating new sequence anyway');
+        logger.warn('[Volumetrik] Sequence has no destroy method, creating new sequence anyway');
         create();
       }
     } catch (error) {
-      console.warn('[Volumetrik] destroy failed:', error);
+      logger.warn('[Volumetrik] destroy failed:', error);
       // Ensure we still create the new sequence even if destroy fails
       currentSequence = null;
       create();
@@ -742,13 +754,13 @@ function createSequence(videoId, videoConfig, options = {}) {
   let primaryUrl;
   if (cachedBlob) {
     primaryUrl = URL.createObjectURL(cachedBlob);
-    console.log('[Volumetrik] Using cached blob URL:', primaryUrl);
+    logger.log('[Volumetrik] Using cached blob URL:', primaryUrl);
   } else {
     primaryUrl = IS_MOBILE && supportsAstc && mobileUrl ? mobileUrl : defaultUrl;
   }
 
   try {
-    console.log('[Volumetrik] Creating new WEB4DS sequence for', videoId);
+    logger.log('[Volumetrik] Creating new WEB4DS sequence for', videoId);
     currentSequence = new WEB4DS(
       videoId,
       primaryUrl,
@@ -760,7 +772,7 @@ function createSequence(videoId, videoConfig, options = {}) {
       camera
     );
 
-    console.log('[Volumetrik] WEB4DS sequence created, mesh will be added to scene by library');
+    logger.log('[Volumetrik] WEB4DS sequence created, mesh will be added to scene by library');
     currentSequence.startFrame = startFrame;
 
     // Optimize caching based on device and file size
@@ -771,7 +783,7 @@ function createSequence(videoId, videoConfig, options = {}) {
       currentSequence.keepsChunksInCache(false);
       currentSequence.setChunkSize(CHUNK_SIZE_MOBILE);
       currentSequence.setMaxCacheSize(CACHE_SIZE_MOBILE);
-      console.log('[Volumetrik] Mobile:', (CHUNK_SIZE_MOBILE / 1024 / 1024).toFixed(1), 'MB chunks,', CACHE_SIZE_MOBILE, 'frame cache');
+      logger.log('[Volumetrik] Mobile:', (CHUNK_SIZE_MOBILE / 1024 / 1024).toFixed(1), 'MB chunks,', CACHE_SIZE_MOBILE, 'frame cache');
     } else {
       // Desktop: larger chunks for better performance
       if (isLargeFile) {
@@ -779,13 +791,13 @@ function createSequence(videoId, videoConfig, options = {}) {
         currentSequence.keepsChunksInCache(false);
         currentSequence.setChunkSize(CHUNK_SIZE_DESKTOP_LARGE);
         currentSequence.setMaxCacheSize(CACHE_SIZE_DESKTOP_LARGE);
-        console.log('[Volumetrik] Desktop large:', (CHUNK_SIZE_DESKTOP_LARGE / 1024 / 1024).toFixed(1), 'MB chunks,', CACHE_SIZE_DESKTOP_LARGE, 'frame cache');
+        logger.log('[Volumetrik] Desktop large:', (CHUNK_SIZE_DESKTOP_LARGE / 1024 / 1024).toFixed(1), 'MB chunks,', CACHE_SIZE_DESKTOP_LARGE, 'frame cache');
       } else {
         // Normal desktop files: full caching for smooth playback
         currentSequence.keepsChunksInCache(true);
         currentSequence.setChunkSize(CHUNK_SIZE_DESKTOP);
         currentSequence.setMaxCacheSize(CACHE_SIZE_DESKTOP);
-        console.log('[Volumetrik] Desktop normal:', (CHUNK_SIZE_DESKTOP / 1024 / 1024).toFixed(1), 'MB chunks,', CACHE_SIZE_DESKTOP, 'frame cache');
+        logger.log('[Volumetrik] Desktop normal:', (CHUNK_SIZE_DESKTOP / 1024 / 1024).toFixed(1), 'MB chunks,', CACHE_SIZE_DESKTOP, 'frame cache');
       }
     }
 
@@ -796,14 +808,14 @@ function createSequence(videoId, videoConfig, options = {}) {
         currentSequence.setWaitingGif('./web4dv/waiter/waiter.gif');
       }
     } catch (error) {
-      console.warn('[Volumetrik] Unable to set waiting gif', error);
+      logger.warn('[Volumetrik] Unable to set waiting gif', error);
     }
 
     const waitHint = getWaitHint(videoConfig, startFrame);
     const maxWaitMs = videoConfig.maxWaitMs || (videoConfig.isLarge ? 240000 : 90000);
     const loadStart = performance.now ? performance.now() : Date.now();
 
-    console.log('[Volumetrik] Starting decode', { videoId, startFrame, resumePlayback });
+    logger.log('[Volumetrik] Starting decode', { videoId, startFrame, resumePlayback });
     currentSequence.load(true, false);
 
     progressTimer = setInterval(() => {
@@ -841,7 +853,7 @@ function createSequence(videoId, videoConfig, options = {}) {
         isLoadingVideo = false;
         return;
       }
-      console.warn('[Volumetrik] Loading timeout');
+      logger.warn('[Volumetrik] Loading timeout');
       if (progressTimer) {
         clearInterval(progressTimer);
         progressTimer = null;
@@ -861,7 +873,7 @@ function createSequence(videoId, videoConfig, options = {}) {
       });
     }, maxWaitMs);
   } catch (error) {
-    console.error('[Volumetrik] Failed to create sequence', error);
+    logger.error('[Volumetrik] Failed to create sequence', error);
     isLoadingVideo = false;
     if (progressTimer) {
       clearInterval(progressTimer);
@@ -889,23 +901,23 @@ function finalizeLoad(videoId, videoConfig, startFrame) {
     return;
   }
 
-  console.log('[Volumetrik] Finalizing load for', videoId, '- mesh in scene:', currentSequence.model4D?.mesh ? 'YES' : 'NO');
+  logger.log('[Volumetrik] Finalizing load for', videoId, '- mesh in scene:', currentSequence.model4D?.mesh ? 'YES' : 'NO');
 
-  // Enable shadows on the volumetric mesh and library objects
-  if (currentSequence.model4D) {
+  // Enable shadows on the volumetric mesh and library objects (skip on mobile)
+  if (currentSequence.model4D && !IS_MOBILE) {
     if (currentSequence.model4D.mesh) {
       currentSequence.model4D.mesh.castShadow = true;
       currentSequence.model4D.mesh.receiveShadow = false; // Volumetric mesh doesn't receive shadows
-      console.log('[Volumetrik] Enabled shadows on volumetric mesh');
+      logger.log('[Volumetrik] Enabled shadows on volumetric mesh');
     }
     if (currentSequence.model4D.surface) {
       currentSequence.model4D.surface.receiveShadow = true; // Ground plane receives shadows
       currentSequence.model4D.surface.visible = true; // Show shadow plane
-      console.log('[Volumetrik] Shadow plane visible for ground shadows');
+      logger.log('[Volumetrik] Shadow plane visible for ground shadows');
     }
     if (currentSequence.model4D.light) {
       currentSequence.model4D.light.castShadow = false; // Library light doesn't cast shadows (we use scene lights)
-      console.log('[Volumetrik] Library light shadows disabled (using scene lights)');
+      logger.log('[Volumetrik] Library light shadows disabled (using scene lights)');
     }
   }
 
@@ -931,9 +943,9 @@ function finalizeLoad(videoId, videoConfig, startFrame) {
     // Resume audio context before playing (required by browser autoplay policy)
     if (currentSequence.audioCtx && currentSequence.audioCtx.state === 'suspended') {
       currentSequence.audioCtx.resume().then(() => {
-        console.log('[Volumetrik] Audio context resumed for autoplay');
+        logger.log('[Volumetrik] Audio context resumed for autoplay');
       }).catch(err => {
-        console.warn('[Volumetrik] Failed to resume audio context for autoplay:', err);
+        logger.warn('[Volumetrik] Failed to resume audio context for autoplay:', err);
       });
     }
 
@@ -948,7 +960,7 @@ function finalizeLoad(videoId, videoConfig, startFrame) {
 
 function seekToFrame(targetFrame) {
   if (!currentSequence || !currentSequence.isLoaded) {
-    console.warn('[Volumetrik] Cannot seek - sequence not loaded');
+    logger.warn('[Volumetrik] Cannot seek - sequence not loaded');
     return;
   }
 
@@ -956,7 +968,7 @@ function seekToFrame(targetFrame) {
   const frameRate = currentSequence.frameRate || 30;
   const clampedFrame = Math.max(0, Math.min(targetFrame, totalFrames - 1));
 
-  console.log('[Volumetrik] Seeking to frame', clampedFrame);
+  logger.log('[Volumetrik] Seeking to frame', clampedFrame);
 
   // Update the frame offset which controls playback position
   currentSequence.frameOffset = clampedFrame;
@@ -1155,7 +1167,7 @@ function setARMode(mode) {
     navigator.vibrate(30);
   }
 
-  console.log('[Volumetrik] AR: Mode changed to', mode);
+  logger.log('[Volumetrik] AR: Mode changed to', mode);
 }
 
 function resetARPlacement() {
@@ -1169,7 +1181,7 @@ function resetARPlacement() {
     mesh.rotation.copy(arInitialPlacement.rotation);
     mesh.scale.copy(arInitialPlacement.scale);
 
-    console.log('[Volumetrik] AR: Reset to initial placement');
+    logger.log('[Volumetrik] AR: Reset to initial placement');
     showARHint('Position reset', 2000);
 
     // Haptic feedback
@@ -1191,7 +1203,7 @@ function clampARPosition(mesh) {
     // Set position to max distance
     mesh.position.copy(camera.position).addScaledVector(direction, AR_MAX_DISTANCE);
 
-    console.log('[Volumetrik] AR: Position clamped to max distance', AR_MAX_DISTANCE);
+    logger.log('[Volumetrik] AR: Position clamped to max distance', AR_MAX_DISTANCE);
   }
 }
 
@@ -1223,7 +1235,7 @@ function toggleShadows() {
     arShadowBtn.classList.toggle('active', shadowsEnabled);
   }
 
-  console.log('[Volumetrik] Shadows', shadowsEnabled ? 'enabled' : 'disabled');
+  logger.log('[Volumetrik] Shadows', shadowsEnabled ? 'enabled' : 'disabled');
 
   // Haptic feedback
   if (navigator.vibrate) {
@@ -1235,29 +1247,29 @@ function setupARButton() {
   const arButton = document.getElementById('ar-button');
 
   if (!arButton) {
-    console.log('[Volumetrik] AR button not found');
+    logger.log('[Volumetrik] AR button not found');
     return;
   }
 
   if (!('xr' in navigator)) {
-    console.log('[Volumetrik] WebXR not available in this browser');
+    logger.log('[Volumetrik] WebXR not available in this browser');
     arButton.style.display = 'none';
     return;
   }
 
   navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
     if (!supported) {
-      console.log('[Volumetrik] AR not supported on this device');
+      logger.log('[Volumetrik] AR not supported on this device');
       arButton.style.display = 'none';
       return;
     }
 
-    console.log('[Volumetrik] AR is supported! Showing AR button');
+    logger.log('[Volumetrik] AR is supported! Showing AR button');
     arButton.style.display = 'flex';
 
     // Add click handler to start/end AR session (only once)
     arButton.onclick = async () => {
-      console.log('[Volumetrik] AR button clicked');
+      logger.log('[Volumetrik] AR button clicked');
 
       if (!renderer.xr.isPresenting) {
         // Start AR session
@@ -1265,7 +1277,7 @@ function setupARButton() {
           let session;
 
           // Try basic AR session with proper reference space handling
-          console.log('[Volumetrik] Requesting AR session...');
+          logger.log('[Volumetrik] Requesting AR session...');
 
           try {
             // Get the body element for dom-overlay
@@ -1278,10 +1290,10 @@ function setupARButton() {
                 domOverlay: { root: domOverlay },
                 optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
               });
-              console.log('[Volumetrik] AR session granted with local-floor and dom-overlay');
+              logger.log('[Volumetrik] AR session granted with local-floor and dom-overlay');
               renderer.xr.setReferenceSpaceType('local-floor');
             } catch (e) {
-              console.warn('[Volumetrik] local-floor with dom-overlay failed, trying viewer mode:', e.message);
+              logger.warn('[Volumetrik] local-floor with dom-overlay failed, trying viewer mode:', e.message);
 
               // Attempt 2: Fallback to viewer reference space with dom-overlay
               try {
@@ -1289,17 +1301,17 @@ function setupARButton() {
                   requiredFeatures: ['dom-overlay'],
                   domOverlay: { root: domOverlay }
                 });
-                console.log('[Volumetrik] AR session granted with viewer mode and dom-overlay');
+                logger.log('[Volumetrik] AR session granted with viewer mode and dom-overlay');
                 renderer.xr.setReferenceSpaceType('viewer');
               } catch (e2) {
-                console.warn('[Volumetrik] dom-overlay failed, trying without it:', e2.message);
+                logger.warn('[Volumetrik] dom-overlay failed, trying without it:', e2.message);
 
                 // Attempt 3: Last resort - no dom-overlay (controls will be hidden)
                 try {
                   session = await navigator.xr.requestSession('immersive-ar', {
                     optionalFeatures: ['local-floor', 'bounded-floor']
                   });
-                  console.log('[Volumetrik] AR session granted without dom-overlay');
+                  logger.log('[Volumetrik] AR session granted without dom-overlay');
                   renderer.xr.setReferenceSpaceType('viewer');
                 } catch (e3) {
                   throw new Error('Your device reports AR support but cannot create an AR session. This may be due to:\n\n' +
@@ -1315,16 +1327,16 @@ function setupARButton() {
             throw error;
           }
 
-          console.log('[Volumetrik] Setting up renderer for AR...');
+          logger.log('[Volumetrik] Setting up renderer for AR...');
           await renderer.xr.setSession(session);
-          console.log('[Volumetrik] AR session active!');
+          logger.log('[Volumetrik] AR session active!');
         } catch (error) {
-          console.error('[Volumetrik] AR session failed:', error);
+          logger.error('[Volumetrik] AR session failed:', error);
           alert('Unable to start AR\n\n' + error.message);
         }
       } else {
         // End AR session
-        console.log('[Volumetrik] Ending AR session');
+        logger.log('[Volumetrik] Ending AR session');
         renderer.xr.getSession().end();
       }
     };
@@ -1334,16 +1346,16 @@ function setupARButton() {
       renderer.xr.addEventListener('sessionstart', onARSessionStart);
       renderer.xr.addEventListener('sessionend', onARSessionEnd);
       arEventListenersAdded = true;
-      console.log('[Volumetrik] AR event listeners registered');
+      logger.log('[Volumetrik] AR event listeners registered');
     }
   }).catch((error) => {
-    console.error('[Volumetrik] WebXR support check failed:', error);
+    logger.error('[Volumetrik] WebXR support check failed:', error);
     arButton.style.display = 'none';
   });
 }
 
 function onARSessionStart() {
-  console.log('[Volumetrik] AR session started');
+  logger.log('[Volumetrik] AR session started');
   isARMode = true;
 
   // Show AR UI overlay
@@ -1365,13 +1377,13 @@ function onARSessionStart() {
   if (keyLight) keyLight.visible = false;
   if (fillLight) fillLight.visible = false;
   if (ambientLight) ambientLight.visible = false;
-  console.log('[Volumetrik] AR: Scene lights hidden for better performance');
+  logger.log('[Volumetrik] AR: Scene lights hidden for better performance');
 
   // Hide the original mesh - user will place it with SLAM
   if (currentSequence && currentSequence.isLoaded && currentSequence.model4D && currentSequence.model4D.mesh) {
     const mesh = currentSequence.model4D.mesh;
     mesh.visible = false; // Hide until placed with SLAM
-    console.log('[Volumetrik] AR: Original mesh hidden, waiting for SLAM placement');
+    logger.log('[Volumetrik] AR: Original mesh hidden, waiting for SLAM placement');
   }
 
   // Set up hit test reticle for SLAM placement (only if not already exists)
@@ -1383,9 +1395,9 @@ function onARSessionStart() {
     reticle.matrixAutoUpdate = false;
     reticle.visible = false;
     scene.add(reticle);
-    console.log('[Volumetrik] AR: Created reticle for SLAM placement (40-50cm ring)');
+    logger.log('[Volumetrik] AR: Created reticle for SLAM placement (40-50cm ring)');
   } else {
-    console.log('[Volumetrik] AR: Reusing existing reticle');
+    logger.log('[Volumetrik] AR: Reusing existing reticle');
   }
 
   const controller = renderer.xr.getController(0);
@@ -1404,7 +1416,7 @@ function onARSessionStart() {
 }
 
 function onARSessionEnd() {
-  console.log('[Volumetrik] AR session ended');
+  logger.log('[Volumetrik] AR session ended');
   isARMode = false;
   hitTestSourceRequested = false;
   hitTestSource = null;
@@ -1461,7 +1473,7 @@ function onARSessionEnd() {
     }
   });
   arPlacedMeshes = [];
-  console.log('[Volumetrik] AR: Removed all placed meshes');
+  logger.log('[Volumetrik] AR: Removed all placed meshes');
 
   // Reset the original actor position, scale, and visibility
   if (currentSequence && currentSequence.model4D && currentSequence.model4D.mesh) {
@@ -1470,7 +1482,7 @@ function onARSessionEnd() {
     mesh.position.set(0, 0, 0);
     mesh.rotation.set(0, 0, 0);
     mesh.scale.set(1, 1, 1);
-    console.log('[Volumetrik] AR: Reset actor to default position');
+    logger.log('[Volumetrik] AR: Reset actor to default position');
   }
 
   // Restore grid visibility
@@ -1484,7 +1496,7 @@ function onARSessionEnd() {
   if (keyLight) keyLight.visible = true;
   if (fillLight) fillLight.visible = true;
   if (ambientLight) ambientLight.visible = true;
-  console.log('[Volumetrik] AR: Scene lights restored');
+  logger.log('[Volumetrik] AR: Scene lights restored');
 
   // Change button back to "AR"
   const arButton = document.getElementById('ar-button');
@@ -1495,11 +1507,11 @@ function onARSessionEnd() {
 }
 
 function onARSelect() {
-  console.log('[Volumetrik] AR select triggered');
+  logger.log('[Volumetrik] AR select triggered');
 
   // Check if we have the mesh (even if not fully loaded)
   if (!currentSequence || !currentSequence.model4D || !currentSequence.model4D.mesh) {
-    console.warn('[Volumetrik] AR select: mesh not available yet');
+    logger.warn('[Volumetrik] AR select: mesh not available yet');
     return;
   }
 
@@ -1507,7 +1519,7 @@ function onARSelect() {
 
   // Only place if not already placed
   if (arPlacedMeshes.includes(mesh)) {
-    console.log('[Volumetrik] AR: Mesh already placed, ignoring select');
+    logger.log('[Volumetrik] AR: Mesh already placed, ignoring select');
     return;
   }
 
@@ -1525,7 +1537,7 @@ function onARSelect() {
         cameraDirection.normalize();
         mesh.position.addScaledVector(cameraDirection, 1.5); // Move 1.5m forward on floor plane
 
-        console.log('[Volumetrik] AR: Placed at reticle matrix position + 1.5m forward offset');
+        logger.log('[Volumetrik] AR: Placed at reticle matrix position + 1.5m forward offset');
       } else if (reticle.position) {
         // Use reticle's direct position (fallback positioning) + forward offset
         mesh.position.copy(reticle.position);
@@ -1537,7 +1549,7 @@ function onARSelect() {
         cameraDirection.normalize();
         mesh.position.addScaledVector(cameraDirection, 1.0); // Move 1m forward on floor plane
 
-        console.log('[Volumetrik] AR: Placed at reticle position + 1m forward offset');
+        logger.log('[Volumetrik] AR: Placed at reticle position + 1m forward offset');
       } else {
         // Last resort: 1m forward on floor plane from camera
         const cameraDirection = new THREE.Vector3();
@@ -1549,7 +1561,7 @@ function onARSelect() {
         position.addScaledVector(cameraDirection, 1.0); // 1m forward on floor
         mesh.position.copy(position);
 
-        console.log('[Volumetrik] AR: Placed at fallback position (1m forward on floor)');
+        logger.log('[Volumetrik] AR: Placed at fallback position (1m forward on floor)');
       }
     } else {
       // No reticle: place 1m forward on floor plane from camera
@@ -1562,7 +1574,7 @@ function onARSelect() {
       position.addScaledVector(cameraDirection, 1.0); // 1m forward on floor
       mesh.position.copy(position);
 
-      console.log('[Volumetrik] AR: Placed at fallback position (no reticle, 1m forward on floor)');
+      logger.log('[Volumetrik] AR: Placed at fallback position (no reticle, 1m forward on floor)');
     }
 
     // Make mesh visible and set AR scale (1.5 = human scale)
@@ -1582,7 +1594,7 @@ function onARSelect() {
     // Add to placed meshes for manipulation
     arPlacedMeshes.push(mesh);
 
-    console.log('[Volumetrik] AR: Actor placed at human scale (1.5x)');
+    logger.log('[Volumetrik] AR: Actor placed at human scale (1.5x)');
 
     // Show manipulation hints
     hideARHint();
@@ -1592,7 +1604,7 @@ function onARSelect() {
     // Set rotate mode as default and update button states
     setARMode('rotate');
   } catch (error) {
-    console.error('[Volumetrik] AR select failed:', error);
+    logger.error('[Volumetrik] AR select failed:', error);
   }
 }
 
@@ -1606,15 +1618,15 @@ function handleARHitTest(frame) {
       if (session.requestHitTestSource) {
         session.requestHitTestSource({ space: refSpace }).then((source) => {
           hitTestSource = source;
-          console.log('[Volumetrik] Hit test source initialized');
+          logger.log('[Volumetrik] Hit test source initialized');
         }).catch((error) => {
-          console.warn('[Volumetrik] Hit test not available:', error);
+          logger.warn('[Volumetrik] Hit test not available:', error);
         });
       } else {
-        console.warn('[Volumetrik] Hit test API not supported on this device');
+        logger.warn('[Volumetrik] Hit test API not supported on this device');
       }
     }).catch((error) => {
-      console.warn('[Volumetrik] Could not get viewer reference space:', error);
+      logger.warn('[Volumetrik] Could not get viewer reference space:', error);
     });
 
     session.addEventListener('end', () => {
@@ -1655,7 +1667,7 @@ function handleARHitTest(frame) {
     reticle.position.copy(position);
     reticle.rotation.x = -Math.PI / 2; // Face up
     reticle.updateMatrixWorld(true);
-    console.log('[Volumetrik] Reticle fallback position (3m forward at 1.2m height):', position, 'Camera pos:', camera.position);
+    logger.log('[Volumetrik] Reticle fallback position (3m forward at 1.2m height):', position, 'Camera pos:', camera.position);
   }
 }
 
@@ -1678,7 +1690,7 @@ function setupARGestureControls() {
   canvas.addEventListener('touchmove', onARTouchMove, { passive: false });
   canvas.addEventListener('touchend', onARTouchEnd, { passive: false });
 
-  console.log('[Volumetrik] AR gesture controls enabled on document and canvas');
+  logger.log('[Volumetrik] AR gesture controls enabled on document and canvas');
 }
 
 function onARTouchStart(event) {
@@ -1704,7 +1716,7 @@ function onARTouchStart(event) {
 
   // If no meshes placed yet, this is a placement touch
   if (arPlacedMeshes.length === 0) {
-    console.log('[Volumetrik] AR: Touch detected for placement, reticle visible:', reticle?.visible);
+    logger.log('[Volumetrik] AR: Touch detected for placement, reticle visible:', reticle?.visible);
     // Call AR select to place the mesh (even if reticle not visible yet)
     onARSelect();
     return;
@@ -1712,7 +1724,7 @@ function onARTouchStart(event) {
 
   // Otherwise, handle manipulation
   if (arPlacedMeshes.length > 0) {
-    console.log('[Volumetrik] AR: Touch for manipulation, fingers:', event.touches.length, 'mode:', arCurrentMode);
+    logger.log('[Volumetrik] AR: Touch for manipulation, fingers:', event.touches.length, 'mode:', arCurrentMode);
     arTouchState.touches = Array.from(event.touches);
 
     if (event.touches.length === 1) {
@@ -1730,7 +1742,7 @@ function onARTouchStart(event) {
         showARModeIndicator('move');
       }
 
-      console.log('[Volumetrik] AR: Single touch started -', arCurrentMode, 'mode active');
+      logger.log('[Volumetrik] AR: Single touch started -', arCurrentMode, 'mode active');
       event.preventDefault();
     } else if (event.touches.length === 2) {
       // Two fingers - scale mode (overrides current mode)
@@ -1745,7 +1757,7 @@ function onARTouchStart(event) {
       // Show scale mode indicator
       showARModeIndicator('scale');
 
-      console.log('[Volumetrik] AR: Pinch scale mode activated, initial distance:', arTouchState.initialDistance);
+      logger.log('[Volumetrik] AR: Pinch scale mode activated, initial distance:', arTouchState.initialDistance);
       event.preventDefault();
     }
   }
@@ -1754,7 +1766,7 @@ function onARTouchStart(event) {
 function onARTouchMove(event) {
   if (!isARMode) return;
   if (!arTouchState.selectedMesh) {
-    console.log('[Volumetrik] AR: TouchMove but no selected mesh');
+    logger.log('[Volumetrik] AR: TouchMove but no selected mesh');
     return;
   }
 
@@ -1796,7 +1808,7 @@ function onARTouchMove(event) {
         // Clamp position to prevent actor from going too far
         clampARPosition(arTouchState.selectedMesh);
 
-        console.log('[Volumetrik] AR: Moving on floor, delta:', deltaX, deltaY, 'position:', arTouchState.selectedMesh.position);
+        logger.log('[Volumetrik] AR: Moving on floor, delta:', deltaX, deltaY, 'position:', arTouchState.selectedMesh.position);
       }
     } else if (arTouchState.isDragging) {
       // Rotation mode - rotate ONLY around Z axis (horizontal spin like a turntable)
@@ -1807,7 +1819,7 @@ function onARTouchMove(event) {
         // Only apply rotation if there's actual movement to avoid jitter
         if (Math.abs(deltaX) > 0) {
           arTouchState.selectedMesh.rotation.z += deltaX * 0.005; // Only rotate around Z
-          console.log('[Volumetrik] AR: Rotating around Z axis only, deltaX:', deltaX, 'rotation.z:', arTouchState.selectedMesh.rotation.z);
+          logger.log('[Volumetrik] AR: Rotating around Z axis only, deltaX:', deltaX, 'rotation.z:', arTouchState.selectedMesh.rotation.z);
         }
       }
     }
@@ -1850,7 +1862,7 @@ function onARTouchEnd(event) {
     // Hide mode indicator when all touches end
     hideARModeIndicator();
 
-    console.log('[Volumetrik] AR: Touch ended, state reset');
+    logger.log('[Volumetrik] AR: Touch ended, state reset');
   } else {
     // Still some fingers touching - update touch array
     arTouchState.touches = Array.from(event.touches);
@@ -1922,24 +1934,24 @@ function updatePlaybackUI() {
 // ===== Cache Management Functions (Mobile Only) =====
 
 async function setupCacheSystem() {
-  console.log('[Volumetrik] Setting up cache system for mobile');
+  logger.log('[Volumetrik] Setting up cache system for mobile');
 
   // Initialize cache manager
   try {
     await CacheManager.init();
-    console.log('[Volumetrik] Cache manager initialized successfully');
+    logger.log('[Volumetrik] Cache manager initialized successfully');
 
     // Log storage quota information
     const quota = await CacheManager.getStorageQuota();
     if (quota) {
-      console.log('[Volumetrik] Storage quota:', {
+      logger.log('[Volumetrik] Storage quota:', {
         used: (quota.usage / 1024 / 1024).toFixed(1) + ' MB',
         total: (quota.quota / 1024 / 1024).toFixed(1) + ' MB',
         percentUsed: quota.percentUsed.toFixed(1) + '%'
       });
     }
   } catch (error) {
-    console.error('[Volumetrik] Failed to initialize cache manager:', error);
+    logger.error('[Volumetrik] Failed to initialize cache manager:', error);
     return;
   }
 
@@ -2015,7 +2027,7 @@ async function handleCacheButtonClick(videoId) {
   const currentState = cacheState[videoId];
 
   if (currentState === 'caching') {
-    console.log('[Volumetrik] Already caching', videoId);
+    logger.log('[Volumetrik] Already caching', videoId);
     return;
   }
 
@@ -2034,14 +2046,14 @@ async function handleCacheButtonClick(videoId) {
 async function cacheVideo(videoId) {
   const videoConfig = VIDEO_LIBRARY[videoId];
   if (!videoConfig) {
-    console.error('[Volumetrik] Video config not found for', videoId);
+    logger.error('[Volumetrik] Video config not found for', videoId);
     return;
   }
 
   // Determine which URL to cache (mobile or desktop)
   const url = IS_MOBILE ? (videoConfig.mobile || videoConfig.desktop) : videoConfig.desktop;
 
-  console.log('[Volumetrik] Starting cache for', videoId, 'URL:', url);
+  logger.log('[Volumetrik] Starting cache for', videoId, 'URL:', url);
 
   // Check storage quota before starting
   const quota = await CacheManager.getStorageQuota();
@@ -2075,7 +2087,7 @@ async function cacheVideo(videoId) {
     const loadedMB = (progress.loaded / 1024 / 1024).toFixed(1);
     const totalMB = (progress.total / 1024 / 1024).toFixed(1);
 
-    console.log('[Volumetrik] Cache progress:', percent + '%', loadedMB + 'MB /', totalMB + 'MB');
+    logger.log('[Volumetrik] Cache progress:', percent + '%', loadedMB + 'MB /', totalMB + 'MB');
 
     renderLoadingTemplate({
       heading: 'Caching Video',
@@ -2091,7 +2103,7 @@ async function cacheVideo(videoId) {
 
   hideLoadingPanel();
 
-  console.log('[Volumetrik] Cache result for', videoId, ':', result);
+  logger.log('[Volumetrik] Cache result for', videoId, ':', result);
 
   if (result.success) {
     cacheState[videoId] = 'cached';
@@ -2108,12 +2120,12 @@ async function cacheVideo(videoId) {
     }
 
     alert(`${videoConfig.name} cached successfully!\n\nSize: ${sizeMB} MB\n\nYou can now play this video offline.${storageInfo}`);
-    console.log('[Volumetrik] Cache successful for', videoId, 'Size:', sizeMB, 'MB');
+    logger.log('[Volumetrik] Cache successful for', videoId, 'Size:', sizeMB, 'MB');
   } else {
     cacheState[videoId] = 'none';
     updateCacheButtonUI(videoId);
 
-    console.error('[Volumetrik] Cache failed for', videoId, ':', result);
+    logger.error('[Volumetrik] Cache failed for', videoId, ':', result);
 
     if (result.quotaExceeded) {
       alert(`Storage quota exceeded!\n\n${result.error}\n\nTip: Clear some cached videos to free up space.`);
@@ -2126,7 +2138,7 @@ async function cacheVideo(videoId) {
 async function deleteCachedVideo(videoId) {
   const videoConfig = VIDEO_LIBRARY[videoId];
 
-  console.log('[Volumetrik] Deleting cache for', videoId);
+  logger.log('[Volumetrik] Deleting cache for', videoId);
 
   const success = await CacheManager.deleteCachedVideo(videoId);
 
@@ -2134,14 +2146,14 @@ async function deleteCachedVideo(videoId) {
     cacheState[videoId] = 'none';
     updateCacheButtonUI(videoId);
     updateCachePanel();
-    console.log('[Volumetrik] Cache deleted for', videoId);
+    logger.log('[Volumetrik] Cache deleted for', videoId);
   } else {
     alert('Failed to delete cached video');
   }
 }
 
 async function clearAllCache() {
-  console.log('[Volumetrik] Clearing all cache');
+  logger.log('[Volumetrik] Clearing all cache');
 
   const success = await CacheManager.clearAllCache();
 
@@ -2153,7 +2165,7 @@ async function clearAllCache() {
     }
     updateCachePanel();
     alert('All cached videos have been cleared.');
-    console.log('[Volumetrik] All cache cleared');
+    logger.log('[Volumetrik] All cache cleared');
   } else {
     alert('Failed to clear cache');
   }
@@ -2199,24 +2211,24 @@ async function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
     try {
       const registration = await navigator.serviceWorker.register('/sw.js');
-      console.log('[Volumetrik] Service Worker registered:', registration.scope);
+      logger.log('[Volumetrik] Service Worker registered:', registration.scope);
 
       // Listen for updates
       registration.addEventListener('updatefound', () => {
         const newWorker = registration.installing;
-        console.log('[Volumetrik] Service Worker update found');
+        logger.log('[Volumetrik] Service Worker update found');
 
         newWorker.addEventListener('statechange', () => {
           if (newWorker.state === 'activated') {
-            console.log('[Volumetrik] Service Worker activated');
+            logger.log('[Volumetrik] Service Worker activated');
           }
         });
       });
     } catch (error) {
-      console.warn('[Volumetrik] Service Worker registration failed:', error);
+      logger.warn('[Volumetrik] Service Worker registration failed:', error);
     }
   } else {
-    console.log('[Volumetrik] Service Worker not supported in this browser');
+    logger.log('[Volumetrik] Service Worker not supported in this browser');
   }
 }
 
