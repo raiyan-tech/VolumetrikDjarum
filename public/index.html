@@ -178,6 +178,120 @@
       opacity: 0.7;
     }
 
+    /* Cache button styles (mobile only) */
+    .cache-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(99, 102, 241, 0.9);
+      color: white;
+      font-size: 12px;
+      cursor: pointer;
+      display: none; /* Hidden by default, shown on mobile via JS */
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      z-index: 10;
+      padding: 0;
+    }
+
+    .cache-btn:active {
+      transform: scale(0.9);
+    }
+
+    .cache-btn.cached {
+      background: rgba(16, 185, 129, 0.9); /* Green when cached */
+    }
+
+    .cache-btn.caching {
+      background: rgba(245, 158, 11, 0.9); /* Amber when caching */
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    /* Cache management panel */
+    .cache-panel {
+      position: absolute;
+      bottom: calc(env(safe-area-inset-bottom, 24px) + 260px); /* Raised above timeline */
+      right: 16px;
+      z-index: 105;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(12px);
+      padding: 16px;
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 200px;
+    }
+
+    .cache-panel.show {
+      display: flex;
+    }
+
+    .cache-panel .title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .cache-panel .info {
+      font-size: 12px;
+      opacity: 0.85;
+      line-height: 1.5;
+    }
+
+    .cache-panel .clear-btn {
+      background: rgba(239, 68, 68, 0.9);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .cache-panel .clear-btn:active {
+      transform: scale(0.95);
+    }
+
+    /* Cache toggle button */
+    .cache-toggle-btn {
+      position: absolute;
+      bottom: calc(env(safe-area-inset-bottom, 24px) + 260px); /* Raised above timeline */
+      right: 16px;
+      z-index: 104;
+      background: rgba(99, 102, 241, 0.9);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 48px;
+      height: 48px;
+      font-size: 20px;
+      cursor: pointer;
+      display: none; /* Hidden by default, shown on mobile via JS */
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+      transition: all 0.2s ease;
+    }
+
+    .cache-toggle-btn:active {
+      transform: scale(0.95);
+    }
+
     .controls {
       position: absolute;
       bottom: calc(env(safe-area-inset-bottom, 24px) + 90px);
@@ -619,6 +733,11 @@
         bottom: calc(env(safe-area-inset-bottom, 24px) + 180px);
       }
 
+      .cache-toggle-btn,
+      .cache-panel {
+        bottom: calc(env(safe-area-inset-bottom, 24px) + 250px); /* Adjusted for mobile */
+      }
+
       .progress-bar {
         height: calc(env(safe-area-inset-bottom, 0px) + 56px);
         padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
@@ -644,27 +763,33 @@
   </div>
 
   <div class="video-selector" id="video-selector">
-    <button class="video-btn active" data-video="dance-nani">
+    <button class="video-btn active" data-video="dance-nani" style="position: relative;">
+      <button class="cache-btn" data-cache-video="dance-nani" title="Cache for offline">⬇</button>
       <span class="label">Topeng Losari</span>
       <span class="video-progress" data-progress="dance-nani">--</span>
     </button>
-    <button class="video-btn" data-video="dance-didik">
+    <button class="video-btn" data-video="dance-didik" style="position: relative;">
+      <button class="cache-btn" data-cache-video="dance-didik" title="Cache for offline">⬇</button>
       <span class="label">Dua Muka</span>
       <span class="video-progress" data-progress="dance-didik">--</span>
     </button>
-    <button class="video-btn" data-video="martial-asep">
+    <button class="video-btn" data-video="martial-asep" style="position: relative;">
+      <button class="cache-btn" data-cache-video="martial-asep" title="Cache for offline">⬇</button>
       <span class="label">Golok Panglipur</span>
       <span class="video-progress" data-progress="martial-asep">--</span>
     </button>
-    <button class="video-btn" data-video="martial-dian">
+    <button class="video-btn" data-video="martial-dian" style="position: relative;">
+      <button class="cache-btn" data-cache-video="martial-dian" title="Cache for offline">⬇</button>
       <span class="label">Kipas Panglipur</span>
       <span class="video-progress" data-progress="martial-dian">--</span>
     </button>
-    <button class="video-btn" data-video="music-greybeard">
+    <button class="video-btn" data-video="music-greybeard" style="position: relative;">
+      <button class="cache-btn" data-cache-video="music-greybeard" title="Cache for offline">⬇</button>
       <span class="label">Musisi</span>
       <span class="video-progress" data-progress="music-greybeard">--</span>
     </button>
-    <button class="video-btn" data-video="martial-duel">
+    <button class="video-btn" data-video="martial-duel" style="position: relative;">
+      <button class="cache-btn" data-cache-video="martial-duel" title="Cache for offline">⬇</button>
       <span class="label">Duel Panglipur</span>
       <span class="video-progress" data-progress="martial-duel">--</span>
     </button>
@@ -726,7 +851,22 @@
         <span class="icon">&#8635;</span>
         <span>Rotate</span>
       </button>
+      <button class="ar-mode-btn active" id="ar-shadow-btn" data-mode="shadow">
+        <span class="icon">&#9728;</span>
+        <span>Shadow</span>
+      </button>
     </div>
+  </div>
+
+  <!-- Cache Management Panel -->
+  <button class="cache-toggle-btn" id="cache-toggle-btn" title="Manage cache">&#128190;</button>
+  <div class="cache-panel" id="cache-panel">
+    <div class="title">Cache Storage</div>
+    <div class="info" id="cache-info">
+      Total: <span id="cache-size">0 MB</span><br>
+      Videos cached: <span id="cache-count">0</span>
+    </div>
+    <button class="clear-btn" id="clear-all-cache-btn">Clear All Cache</button>
   </div>
 
   <script type="module" src="./app.js?v=20251011-3"></script>

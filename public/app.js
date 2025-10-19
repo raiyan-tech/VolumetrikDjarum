@@ -1,4 +1,5 @@
 import WEB4DS from "./web4dv/web4dvImporter.js";
+import CacheManager from "./CacheManager.js";
 
 // Performance constants - optimized for HTTP/3/QUIC with smaller chunks for better loss recovery
 const CHUNK_SIZE_MOBILE = 512 * 1024;            // 512KB for mobile - better packet loss recovery
@@ -57,6 +58,8 @@ const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 let videoButtons = [];
 const progressDisplays = {};
+let cacheButtons = [];
+const cacheState = {}; // Track cache status per video: 'none', 'caching', 'cached'
 
 let timelineEl;
 let timelineSlider;
@@ -93,6 +96,13 @@ let frameTotalEl;
 let frameBufferedEl;
 let instructionsEl;
 
+// Cache UI elements
+let cacheToggleBtn;
+let cachePanel;
+let cacheSizeEl;
+let cacheCountEl;
+let clearAllCacheBtn;
+
 // AR UI elements
 let arOverlayEl;
 let arHintEl;
@@ -100,8 +110,10 @@ let arModeIndicatorEl;
 let arResetBtn;
 let arMoveBtn;
 let arRotateBtn;
+let arShadowBtn;
 let arHintTimeout = null;
 let arCurrentMode = 'rotate'; // Default mode: rotate
+let shadowsEnabled = true; // Track shadow state
 
 let hasInitialized = false;
 let resizeTimeout = null;
@@ -154,6 +166,7 @@ function init() {
   arResetBtn = document.getElementById('ar-reset-btn');
   arMoveBtn = document.getElementById('ar-move-btn');
   arRotateBtn = document.getElementById('ar-rotate-btn');
+  arShadowBtn = document.getElementById('ar-shadow-btn');
 
   // AR reset button handler
   if (arResetBtn) {
@@ -166,6 +179,21 @@ function init() {
   }
   if (arRotateBtn) {
     arRotateBtn.addEventListener('click', () => setARMode('rotate'));
+  }
+  if (arShadowBtn) {
+    arShadowBtn.addEventListener('click', toggleShadows);
+  }
+
+  // Cache UI elements
+  cacheToggleBtn = document.getElementById('cache-toggle-btn');
+  cachePanel = document.getElementById('cache-panel');
+  cacheSizeEl = document.getElementById('cache-size');
+  cacheCountEl = document.getElementById('cache-count');
+  clearAllCacheBtn = document.getElementById('clear-all-cache-btn');
+
+  // Initialize cache system (mobile only)
+  if (IS_MOBILE) {
+    setupCacheSystem();
   }
 
   // Combined iteration - performance optimization
@@ -232,10 +260,10 @@ function setupRenderer() {
   renderer.setPixelRatio(adaptivePixelRatio);
   console.log('[Volumetrik] Pixel ratio:', adaptivePixelRatio, '(device:', window.devicePixelRatio + ')');
 
-  // Explicitly disable shadow rendering for maximum performance
-  // (WEB4DS library enables this at line 140, but we override it here)
-  renderer.shadowMap.enabled = false;
-  console.log('[Volumetrik] Shadow rendering disabled (overriding WEB4DS library default)');
+  // Enable shadow rendering for realistic lighting
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  console.log('[Volumetrik] Shadow rendering enabled');
 
   renderer.xr.enabled = true;
 }
@@ -258,13 +286,17 @@ function setupScene() {
   const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
   keyLight.position.set(5, 10, 5);
   keyLight.name = 'keyLight'; // Named for AR mode optimization
-  keyLight.castShadow = false; // Explicitly disable shadows for performance
+  keyLight.castShadow = true; // Enable shadows
+  keyLight.shadow.mapSize.width = 2048;
+  keyLight.shadow.mapSize.height = 2048;
+  keyLight.shadow.camera.near = 0.5;
+  keyLight.shadow.camera.far = 50;
   scene.add(keyLight);
 
   const fillLight = new THREE.DirectionalLight(0x8899ff, 0.6);
   fillLight.position.set(-3, 6, -6);
   fillLight.name = 'fillLight'; // Named for AR mode optimization
-  fillLight.castShadow = false; // Explicitly disable shadows for performance
+  fillLight.castShadow = false; // Fill light doesn't cast shadows
   scene.add(fillLight);
 
   const ambient = new THREE.AmbientLight(0x505050, 0.8);
@@ -419,7 +451,7 @@ function removeSequenceMeshFromScene(sequence) {
   }
 }
 
-function loadVideo(videoId, options = {}) {
+async function loadVideo(videoId, options = {}) {
   // Clean up AR state when switching videos in AR mode
   if (isARMode) {
     console.log('[Volumetrik] Cleaning up AR state before switching videos');
@@ -542,7 +574,18 @@ function loadVideo(videoId, options = {}) {
   resetTimeline();
   setVideoProgress(targetVideoId, { status: 'loading', decoded: 0, total: 0 });
 
-  const create = () => createSequence(targetVideoId, videoConfig, { startFrame, resumePlayback });
+  // Check if video is cached (mobile only)
+  let cachedBlob = null;
+  if (IS_MOBILE && cacheState[targetVideoId] === 'cached') {
+    console.log('[Volumetrik] Checking cache for', targetVideoId);
+    const cachedEntry = await CacheManager.getCachedVideo(targetVideoId);
+    if (cachedEntry && cachedEntry.blob) {
+      cachedBlob = cachedEntry.blob;
+      console.log('[Volumetrik] Loading from cache:', targetVideoId, 'Size:', (cachedBlob.size / 1024 / 1024).toFixed(1), 'MB');
+    }
+  }
+
+  const create = () => createSequence(targetVideoId, videoConfig, { startFrame, resumePlayback, cachedBlob });
 
   if (currentSequence) {
     console.log('[Volumetrik] Destroying previous sequence before loading new one');
@@ -689,11 +732,20 @@ function getWaitHint(videoConfig, startFrame) {
 function createSequence(videoId, videoConfig, options = {}) {
   const startFrame = Math.max(0, Math.floor(options.startFrame || 0));
   const resumePlayback = options.resumePlayback !== undefined ? !!options.resumePlayback : true;
+  const cachedBlob = options.cachedBlob || null;
   const hasRendererExtensions = renderer && renderer.extensions && typeof renderer.extensions.get === 'function';
   const supportsAstc = hasRendererExtensions && !!renderer.extensions.get('WEBGL_compressed_texture_astc');
   const defaultUrl = videoConfig.desktop || videoConfig.mobile || '';
   const mobileUrl = videoConfig.mobile || defaultUrl;
-  const primaryUrl = IS_MOBILE && supportsAstc && mobileUrl ? mobileUrl : defaultUrl;
+
+  // Use blob URL if we have cached content, otherwise use remote URL
+  let primaryUrl;
+  if (cachedBlob) {
+    primaryUrl = URL.createObjectURL(cachedBlob);
+    console.log('[Volumetrik] Using cached blob URL:', primaryUrl);
+  } else {
+    primaryUrl = IS_MOBILE && supportsAstc && mobileUrl ? mobileUrl : defaultUrl;
+  }
 
   try {
     console.log('[Volumetrik] Creating new WEB4DS sequence for', videoId);
@@ -839,28 +891,21 @@ function finalizeLoad(videoId, videoConfig, startFrame) {
 
   console.log('[Volumetrik] Finalizing load for', videoId, '- mesh in scene:', currentSequence.model4D?.mesh ? 'YES' : 'NO');
 
-  // CRITICAL: Force disable shadows after WEB4DS library enables them
-  // WEB4DS re-enables shadowMap in initSequence(), so we must override it here
-  if (renderer) {
-    renderer.shadowMap.enabled = false;
-    console.log('[Volumetrik] Shadow rendering FORCE DISABLED after sequence load');
-  }
-
-  // Disable shadows on the volumetric mesh and library objects
+  // Enable shadows on the volumetric mesh and library objects
   if (currentSequence.model4D) {
     if (currentSequence.model4D.mesh) {
-      currentSequence.model4D.mesh.castShadow = false;
-      currentSequence.model4D.mesh.receiveShadow = false;
-      console.log('[Volumetrik] Disabled shadows on volumetric mesh');
+      currentSequence.model4D.mesh.castShadow = true;
+      currentSequence.model4D.mesh.receiveShadow = false; // Volumetric mesh doesn't receive shadows
+      console.log('[Volumetrik] Enabled shadows on volumetric mesh');
     }
     if (currentSequence.model4D.surface) {
-      currentSequence.model4D.surface.receiveShadow = false;
-      currentSequence.model4D.surface.visible = false; // Hide ShadowMaterial plane completely
-      console.log('[Volumetrik] Hidden ShadowMaterial surface (removes shadow circle under actor)');
+      currentSequence.model4D.surface.receiveShadow = true; // Ground plane receives shadows
+      currentSequence.model4D.surface.visible = true; // Show shadow plane
+      console.log('[Volumetrik] Shadow plane visible for ground shadows');
     }
     if (currentSequence.model4D.light) {
-      currentSequence.model4D.light.castShadow = false;
-      console.log('[Volumetrik] Disabled castShadow on library light');
+      currentSequence.model4D.light.castShadow = false; // Library light doesn't cast shadows (we use scene lights)
+      console.log('[Volumetrik] Library light shadows disabled (using scene lights)');
     }
   }
 
@@ -1147,6 +1192,42 @@ function clampARPosition(mesh) {
     mesh.position.copy(camera.position).addScaledVector(direction, AR_MAX_DISTANCE);
 
     console.log('[Volumetrik] AR: Position clamped to max distance', AR_MAX_DISTANCE);
+  }
+}
+
+function toggleShadows() {
+  shadowsEnabled = !shadowsEnabled;
+
+  // Toggle renderer shadow map
+  renderer.shadowMap.enabled = shadowsEnabled;
+
+  // Toggle scene light shadows
+  const keyLight = scene.getObjectByName('keyLight');
+  if (keyLight) {
+    keyLight.castShadow = shadowsEnabled;
+  }
+
+  // Toggle mesh shadows
+  if (currentSequence && currentSequence.model4D) {
+    if (currentSequence.model4D.mesh) {
+      currentSequence.model4D.mesh.castShadow = shadowsEnabled;
+    }
+    if (currentSequence.model4D.surface) {
+      currentSequence.model4D.surface.receiveShadow = shadowsEnabled;
+      currentSequence.model4D.surface.visible = shadowsEnabled;
+    }
+  }
+
+  // Update button state
+  if (arShadowBtn) {
+    arShadowBtn.classList.toggle('active', shadowsEnabled);
+  }
+
+  console.log('[Volumetrik] Shadows', shadowsEnabled ? 'enabled' : 'disabled');
+
+  // Haptic feedback
+  if (navigator.vibrate) {
+    navigator.vibrate(30);
   }
 }
 
@@ -1836,6 +1917,281 @@ function updatePlaybackUI() {
     timelineSlider.value = Math.min(currentFrame, Number(timelineSlider.max));
     updateTimelineLabels(currentFrame, totalFrames);
   }
+}
+
+// ===== Cache Management Functions (Mobile Only) =====
+
+async function setupCacheSystem() {
+  console.log('[Volumetrik] Setting up cache system for mobile');
+
+  // Initialize cache manager
+  try {
+    await CacheManager.init();
+    console.log('[Volumetrik] Cache manager initialized successfully');
+
+    // Log storage quota information
+    const quota = await CacheManager.getStorageQuota();
+    if (quota) {
+      console.log('[Volumetrik] Storage quota:', {
+        used: (quota.usage / 1024 / 1024).toFixed(1) + ' MB',
+        total: (quota.quota / 1024 / 1024).toFixed(1) + ' MB',
+        percentUsed: quota.percentUsed.toFixed(1) + '%'
+      });
+    }
+  } catch (error) {
+    console.error('[Volumetrik] Failed to initialize cache manager:', error);
+    return;
+  }
+
+  // Get all cache buttons
+  cacheButtons = Array.from(document.querySelectorAll('.cache-btn'));
+
+  // Show cache buttons on mobile
+  cacheButtons.forEach(btn => {
+    btn.style.display = 'flex';
+  });
+
+  // Show cache toggle button on mobile
+  if (cacheToggleBtn) {
+    cacheToggleBtn.style.display = 'flex';
+  }
+
+  // Initialize cache state for all videos
+  for (const videoId of Object.keys(VIDEO_LIBRARY)) {
+    const isCached = await CacheManager.isCached(videoId);
+    cacheState[videoId] = isCached ? 'cached' : 'none';
+    updateCacheButtonUI(videoId);
+  }
+
+  // Update cache panel info
+  updateCachePanel();
+
+  // Set up event listeners
+  setupCacheEventListeners();
+}
+
+function setupCacheEventListeners() {
+  // Cache button click handlers
+  cacheButtons.forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation(); // Prevent triggering video button
+      const videoId = btn.dataset.cacheVideo;
+      await handleCacheButtonClick(videoId);
+    });
+  });
+
+  // Cache toggle button
+  if (cacheToggleBtn) {
+    cacheToggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (cachePanel) {
+        cachePanel.classList.toggle('show');
+      }
+    });
+  }
+
+  // Close cache panel when clicking outside
+  document.addEventListener('click', (e) => {
+    if (cachePanel && cachePanel.classList.contains('show')) {
+      // Check if click is outside both the panel and toggle button
+      if (!cachePanel.contains(e.target) && !cacheToggleBtn.contains(e.target)) {
+        cachePanel.classList.remove('show');
+      }
+    }
+  });
+
+  // Clear all cache button
+  if (clearAllCacheBtn) {
+    clearAllCacheBtn.addEventListener('click', async () => {
+      const confirmed = confirm('Are you sure you want to clear all cached videos? This cannot be undone.');
+      if (confirmed) {
+        await clearAllCache();
+      }
+    });
+  }
+}
+
+async function handleCacheButtonClick(videoId) {
+  const currentState = cacheState[videoId];
+
+  if (currentState === 'caching') {
+    console.log('[Volumetrik] Already caching', videoId);
+    return;
+  }
+
+  if (currentState === 'cached') {
+    // Delete cache
+    const confirmed = confirm('Remove this video from cache?');
+    if (confirmed) {
+      await deleteCachedVideo(videoId);
+    }
+  } else {
+    // Start caching
+    await cacheVideo(videoId);
+  }
+}
+
+async function cacheVideo(videoId) {
+  const videoConfig = VIDEO_LIBRARY[videoId];
+  if (!videoConfig) {
+    console.error('[Volumetrik] Video config not found for', videoId);
+    return;
+  }
+
+  // Determine which URL to cache (mobile or desktop)
+  const url = IS_MOBILE ? (videoConfig.mobile || videoConfig.desktop) : videoConfig.desktop;
+
+  console.log('[Volumetrik] Starting cache for', videoId, 'URL:', url);
+
+  // Check storage quota before starting
+  const quota = await CacheManager.getStorageQuota();
+  if (quota && quota.percentUsed > 90) {
+    alert('Warning: Storage is almost full. You may need to clear some cached videos first.');
+  }
+
+  // Update UI to show caching state
+  cacheState[videoId] = 'caching';
+  updateCacheButtonUI(videoId);
+
+  // Show loading overlay with progress
+  openLoadingPanel();
+  renderLoadingTemplate({
+    heading: 'Caching Video',
+    description: `Downloading ${videoConfig.name} for offline playback...`,
+    detailItems: ['Progress: 0%', 'This may take several minutes depending on your connection.'],
+    showSpinner: true,
+    showCloseButton: false
+  });
+
+  // Start caching with progress callback (throttled to avoid excessive updates)
+  let lastUpdateTime = 0;
+  const result = await CacheManager.cacheVideo(videoId, url, (progress) => {
+    const now = Date.now();
+    // Throttle updates to every 500ms to reduce overhead
+    if (now - lastUpdateTime < 500) return;
+    lastUpdateTime = now;
+
+    const percent = Math.round(progress.percent);
+    const loadedMB = (progress.loaded / 1024 / 1024).toFixed(1);
+    const totalMB = (progress.total / 1024 / 1024).toFixed(1);
+
+    console.log('[Volumetrik] Cache progress:', percent + '%', loadedMB + 'MB /', totalMB + 'MB');
+
+    renderLoadingTemplate({
+      heading: 'Caching Video',
+      description: `Downloading ${videoConfig.name} for offline playback...`,
+      detailItems: [
+        `Progress: ${percent}%`,
+        `Downloaded: ${loadedMB} MB / ${totalMB} MB`
+      ],
+      showSpinner: true,
+      showCloseButton: false
+    });
+  });
+
+  hideLoadingPanel();
+
+  console.log('[Volumetrik] Cache result for', videoId, ':', result);
+
+  if (result.success) {
+    cacheState[videoId] = 'cached';
+    updateCacheButtonUI(videoId);
+    await updateCachePanel(); // Update cache panel to show new size
+
+    const sizeMB = result.size ? (result.size / 1024 / 1024).toFixed(1) : 'Unknown';
+
+    // Show success with storage info
+    const quota = await CacheManager.getStorageQuota();
+    let storageInfo = '';
+    if (quota) {
+      storageInfo = `\n\nStorage used: ${(quota.usage / 1024 / 1024).toFixed(1)} MB / ${(quota.quota / 1024 / 1024).toFixed(1)} MB (${quota.percentUsed.toFixed(1)}%)`;
+    }
+
+    alert(`${videoConfig.name} cached successfully!\n\nSize: ${sizeMB} MB\n\nYou can now play this video offline.${storageInfo}`);
+    console.log('[Volumetrik] Cache successful for', videoId, 'Size:', sizeMB, 'MB');
+  } else {
+    cacheState[videoId] = 'none';
+    updateCacheButtonUI(videoId);
+
+    console.error('[Volumetrik] Cache failed for', videoId, ':', result);
+
+    if (result.quotaExceeded) {
+      alert(`Storage quota exceeded!\n\n${result.error}\n\nTip: Clear some cached videos to free up space.`);
+    } else {
+      alert(`Cache failed: ${result.error || 'Unknown error'}`);
+    }
+  }
+}
+
+async function deleteCachedVideo(videoId) {
+  const videoConfig = VIDEO_LIBRARY[videoId];
+
+  console.log('[Volumetrik] Deleting cache for', videoId);
+
+  const success = await CacheManager.deleteCachedVideo(videoId);
+
+  if (success) {
+    cacheState[videoId] = 'none';
+    updateCacheButtonUI(videoId);
+    updateCachePanel();
+    console.log('[Volumetrik] Cache deleted for', videoId);
+  } else {
+    alert('Failed to delete cached video');
+  }
+}
+
+async function clearAllCache() {
+  console.log('[Volumetrik] Clearing all cache');
+
+  const success = await CacheManager.clearAllCache();
+
+  if (success) {
+    // Update all cache states
+    for (const videoId of Object.keys(VIDEO_LIBRARY)) {
+      cacheState[videoId] = 'none';
+      updateCacheButtonUI(videoId);
+    }
+    updateCachePanel();
+    alert('All cached videos have been cleared.');
+    console.log('[Volumetrik] All cache cleared');
+  } else {
+    alert('Failed to clear cache');
+  }
+}
+
+function updateCacheButtonUI(videoId) {
+  const btn = cacheButtons.find(b => b.dataset.cacheVideo === videoId);
+  if (!btn) return;
+
+  const state = cacheState[videoId];
+
+  // Remove all state classes
+  btn.classList.remove('cached', 'caching');
+
+  // Update icon and class based on state
+  if (state === 'cached') {
+    btn.textContent = '✓';
+    btn.classList.add('cached');
+    btn.title = 'Cached (click to remove)';
+  } else if (state === 'caching') {
+    btn.textContent = '...';
+    btn.classList.add('caching');
+    btn.title = 'Caching...';
+  } else {
+    btn.textContent = '⬇';
+    btn.title = 'Cache for offline';
+  }
+}
+
+async function updateCachePanel() {
+  if (!cacheSizeEl || !cacheCountEl) return;
+
+  const allCached = await CacheManager.getAllCachedVideos();
+  const totalSize = await CacheManager.getTotalCacheSize();
+
+  const sizeMB = (totalSize / 1024 / 1024).toFixed(1);
+  cacheSizeEl.textContent = `${sizeMB} MB`;
+  cacheCountEl.textContent = allCached.length;
 }
 
 // Register Service Worker for HTTP/3/QUIC optimization
