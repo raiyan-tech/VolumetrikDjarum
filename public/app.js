@@ -2061,6 +2061,19 @@ function setupCacheEventListeners() {
 async function handleCacheButtonClick(videoId) {
   const currentState = cacheState[videoId];
 
+  // Check file size before allowing cache
+  const videoConfig = VIDEO_LIBRARY[videoId];
+  if (videoConfig) {
+    alert(
+      '⚠️ Offline Caching Not Recommended\n\n' +
+      'Volumetric videos are 3+ GB each.\n\n' +
+      'The app uses smart streaming that automatically caches small chunks as you watch. ' +
+      'This provides the best experience without filling your device storage.\n\n' +
+      'Streaming cache is managed automatically - no action needed!'
+    );
+    return;
+  }
+
   if (currentState === 'caching') {
     logger.log('[Volumetrik] Already caching', videoId);
     return;
@@ -2245,16 +2258,25 @@ async function updateCachePanel() {
   }
 
   try {
-    const allCached = await CacheManager.getAllCachedVideos();
-    const totalSize = await CacheManager.getTotalCacheSize();
+    // Show browser cache storage estimate instead of IndexedDB
+    if (navigator.storage && navigator.storage.estimate) {
+      const estimate = await navigator.storage.estimate();
+      const usageMB = ((estimate.usage || 0) / 1024 / 1024).toFixed(1);
+      const quotaMB = ((estimate.quota || 0) / 1024 / 1024).toFixed(0);
+      const percentUsed = estimate.quota ? ((estimate.usage || 0) / estimate.quota * 100).toFixed(1) : '0';
 
-    const sizeMB = (totalSize / 1024 / 1024).toFixed(1);
-    cacheSizeEl.textContent = `${sizeMB} MB`;
-    cacheCountEl.textContent = allCached.length;
+      cacheSizeEl.textContent = `${usageMB} MB / ${quotaMB} MB`;
+      cacheCountEl.textContent = `${percentUsed}% used`;
 
-    logger.log('[Volumetrik] Cache panel updated:', allCached.length, 'videos,', sizeMB, 'MB');
+      logger.log('[Volumetrik] Storage:', usageMB, 'MB used of', quotaMB, 'MB');
+    } else {
+      cacheSizeEl.textContent = '-- MB';
+      cacheCountEl.textContent = '--';
+    }
   } catch (error) {
     logger.error('[Volumetrik] Failed to update cache panel:', error);
+    cacheSizeEl.textContent = 'Error';
+    cacheCountEl.textContent = '--';
   }
 }
 
