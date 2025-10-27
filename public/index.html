@@ -45,7 +45,8 @@
       position: absolute;
       top: calc(env(safe-area-inset-top, 12px) + 12px);
       left: 16px;
-      right: 16px;
+      right: auto;
+      max-width: 50%;
       z-index: 100;
       display: flex;
       align-items: center;
@@ -126,6 +127,93 @@
 
     .branding .contact:first-child::before {
       content: '';
+    }
+
+    /* User Profile */
+    .user-profile {
+      position: absolute;
+      top: calc(env(safe-area-inset-top, 12px) + 12px);
+      right: 16px;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(17, 25, 40, 0.55);
+      backdrop-filter: blur(14px);
+      padding: 6px 12px 6px 6px;
+      border-radius: 22px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 14px 40px rgba(15, 23, 42, 0.2);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .user-profile:hover {
+      background: rgba(17, 25, 40, 0.7);
+      border-color: rgba(255, 255, 255, 0.24);
+    }
+
+    .user-profile .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      overflow: hidden;
+      flex-shrink: 0;
+      background: rgba(167, 139, 250, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    .user-profile .avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .user-profile .user-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .user-profile .user-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      line-height: 1.2;
+      max-width: 120px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .user-profile .user-email {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.6);
+      line-height: 1.2;
+      max-width: 120px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .user-profile .sign-out-btn {
+      background: rgba(220, 38, 38, 0.15);
+      border: 1px solid rgba(220, 38, 38, 0.3);
+      color: #fca5a5;
+      padding: 4px 8px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .user-profile .sign-out-btn:hover {
+      background: rgba(220, 38, 38, 0.25);
+      border-color: rgba(220, 38, 38, 0.5);
     }
 
     .video-selector {
@@ -625,6 +713,13 @@
       }
     }
   </style>
+
+  <!-- Authentication Guard -->
+  <script type="module">
+    import { initAuthGuard } from './auth.js';
+    // Redirect to login if not authenticated
+    initAuthGuard('/login.html');
+  </script>
 </head>
 <body>
   <div class="branding">
@@ -641,6 +736,18 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- User Profile -->
+  <div class="user-profile" id="user-profile" style="display: none;">
+    <div class="avatar" id="user-avatar">
+      👤
+    </div>
+    <div class="user-info">
+      <div class="user-name" id="user-name">Loading...</div>
+      <div class="user-email" id="user-email"></div>
+    </div>
+    <button class="sign-out-btn" id="sign-out-btn">Sign Out</button>
   </div>
 
   <div class="video-selector" id="video-selector">
@@ -737,6 +844,58 @@
       </button>
     </div>
   </div>
+
+  <!-- User Profile Handler -->
+  <script type="module">
+    import { onAuthChange, signOutUser } from './auth.js';
+
+    // Update user profile UI when auth state changes
+    onAuthChange((user) => {
+      const profileEl = document.getElementById('user-profile');
+      const avatarEl = document.getElementById('user-avatar');
+      const nameEl = document.getElementById('user-name');
+      const emailEl = document.getElementById('user-email');
+
+      if (user && profileEl) {
+        // Show profile
+        profileEl.style.display = 'flex';
+
+        // Set avatar
+        if (user.photoURL) {
+          avatarEl.innerHTML = `<img src="${user.photoURL}" alt="User avatar">`;
+        } else {
+          avatarEl.textContent = user.displayName ? user.displayName[0].toUpperCase() : '👤';
+        }
+
+        // Set name and email
+        nameEl.textContent = user.displayName || 'User';
+        emailEl.textContent = user.email || '';
+
+        console.log('[UI] User profile updated:', user.email);
+      } else {
+        // Hide profile if not authenticated
+        if (profileEl) {
+          profileEl.style.display = 'none';
+        }
+      }
+    });
+
+    // Handle sign-out button
+    document.getElementById('sign-out-btn').addEventListener('click', async (e) => {
+      e.stopPropagation(); // Prevent profile click event
+
+      if (confirm('Are you sure you want to sign out?')) {
+        try {
+          await signOutUser();
+          console.log('[UI] User signed out, redirecting to login...');
+          window.location.href = '/login.html';
+        } catch (error) {
+          console.error('[UI] Sign-out error:', error);
+          alert('Failed to sign out. Please try again.');
+        }
+      }
+    });
+  </script>
 
   <script type="module" src="./app.js?v=20251011-3"></script>
 </body>

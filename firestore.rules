@@ -1,0 +1,108 @@
+rules_version = '2';
+
+/**
+ * Firestore Security Rules for Volumetrik Platform
+ *
+ * Collections:
+ * - users: User profile and activity data
+ * - admins: Admin whitelist (manage via Firebase Console only)
+ * - analytics: User activity tracking
+ *
+ * Deploy these rules:
+ * 1. Go to Firebase Console > Firestore Database > Rules
+ * 2. Copy and paste this file content
+ * 3. Click "Publish"
+ *
+ * OR use Firebase CLI:
+ * firebase deploy --only firestore:rules
+ */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper function: Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function: Check if user is accessing their own data
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Helper function: Check if user is admin
+    function isAdmin() {
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
+    }
+
+    // ========================================================================
+    // USERS COLLECTION
+    // ========================================================================
+    // Each user has a document with their UID as the document ID
+    // Users can read their own data, admins can read all
+    // Users can write their own data, but cannot change certain fields
+    match /users/{userId} {
+      // Allow read if:
+      // - User is reading their own data, OR
+      // - User is an admin
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+
+      // Allow create if:
+      // - User is authenticated and creating their own document
+      allow create: if isAuthenticated() && isOwner(userId);
+
+      // Allow update if:
+      // - User is updating their own data AND
+      // - Not modifying protected fields (uid, createdAt, totalLogins)
+      allow update: if isAuthenticated() && isOwner(userId) &&
+                       request.resource.data.uid == resource.data.uid &&
+                       request.resource.data.createdAt == resource.data.createdAt &&
+                       request.resource.data.totalLogins == resource.data.totalLogins;
+
+      // Delete not allowed (use Firebase Console if needed)
+      allow delete: if false;
+    }
+
+    // ========================================================================
+    // ADMINS COLLECTION
+    // ========================================================================
+    // Admin whitelist - email addresses of admin users
+    // Only readable by authenticated users (for checking admin status)
+    // Only writable via Firebase Console
+    match /admins/{email} {
+      // Allow read if authenticated (needed to check admin status)
+      allow read: if isAuthenticated();
+
+      // No writes allowed (manage via Firebase Console only)
+      allow write: if false;
+    }
+
+    // ========================================================================
+    // ANALYTICS COLLECTION
+    // ========================================================================
+    // User activity tracking - video plays, AR mode usage, etc.
+    // Users can create their own analytics events
+    // Only admins can read analytics data
+    match /analytics/{docId} {
+      // Only admins can read analytics
+      allow read: if isAdmin();
+
+      // Authenticated users can create analytics events
+      // But only with their own userId
+      allow create: if isAuthenticated() &&
+                       request.resource.data.userId == request.auth.uid;
+
+      // No updates or deletes
+      allow update, delete: if false;
+    }
+
+    // ========================================================================
+    // DEFAULT DENY
+    // ========================================================================
+    // All other collections are denied by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
