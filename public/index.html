@@ -502,6 +502,49 @@
       background: rgba(220, 38, 38, 1);
     }
 
+    /* AR Mode Toggle Buttons (Move/Rotate) */
+    .ar-mode-buttons {
+      position: absolute;
+      bottom: calc(env(safe-area-inset-bottom, 24px) + 240px); /* Raised to clear timeline */
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 12px;
+      pointer-events: auto;
+      z-index: 96;
+    }
+
+    .ar-mode-btn {
+      background: rgba(255, 255, 255, 0.9);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      padding: 12px 20px;
+      border-radius: 24px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #334155;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .ar-mode-btn:active {
+      transform: scale(0.95);
+    }
+
+    .ar-mode-btn.active {
+      background: #6366f1;
+      color: #fff;
+      border-color: #6366f1;
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+    }
+
+    .ar-mode-btn .icon {
+      font-size: 18px;
+    }
+
     @media (max-width: 768px) {
       .branding {
         left: 12px;
@@ -601,6 +644,10 @@
   </div>
 
   <div class="video-selector" id="video-selector">
+    <button class="video-btn" id="local-file-btn" title="Load local 4DS file">
+      <span class="label">📁 Local File</span>
+      <span class="video-progress">Browse</span>
+    </button>
     <button class="video-btn active" data-video="dance-nani">
       <span class="label">Topeng Losari</span>
       <span class="video-progress" data-progress="dance-nani">--</span>
@@ -626,6 +673,9 @@
       <span class="video-progress" data-progress="martial-duel">--</span>
     </button>
   </div>
+
+  <!-- Hidden file input for local file selection -->
+  <input type="file" id="local-file-input" accept=".4ds" style="display: none;" />
 
   <canvas id="canvas4D"></canvas>
 
@@ -674,6 +724,18 @@
     <div class="ar-hint" id="ar-hint">Tap anywhere to place actor</div>
     <div class="ar-mode-indicator" id="ar-mode-indicator">Drag to rotate</div>
     <button class="ar-reset-btn" id="ar-reset-btn" title="Reset position">&#8634;</button>
+
+    <!-- AR Mode Toggle Buttons -->
+    <div class="ar-mode-buttons">
+      <button class="ar-mode-btn" id="ar-move-btn" data-mode="move">
+        <span class="icon">&#9968;</span>
+        <span>Move</span>
+      </button>
+      <button class="ar-mode-btn active" id="ar-rotate-btn" data-mode="rotate">
+        <span class="icon">&#8635;</span>
+        <span>Rotate</span>
+      </button>
+    </div>
   </div>
 
   <script type="module" src="./app.js?v=20251011-3"></script>

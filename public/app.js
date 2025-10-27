@@ -64,6 +64,15 @@ let timeTotalEl;
 
 const videoProgressState = {};
 
+// Local file handling
+let localFileInput = null;
+let localFileBlobURL = null;
+let localFileName = null;
+
+// Memory monitoring for local files
+let memoryMonitorInterval = null;
+let lastMemoryWarning = 0;
+
 let canvas;
 let container;
 let renderer;
@@ -116,6 +125,9 @@ let arTouchState = {
   longPressStartPos: null
 };
 
+// AR mode toggle state (controlled by buttons)
+let currentARMode = 'rotate'; // 'rotate' or 'move'
+
 // AR Performance: Position clamping boundaries (prevent actor from going too far)
 const AR_MAX_DISTANCE = 10; // Maximum distance from camera (10 meters)
 
@@ -132,6 +144,25 @@ function init() {
     }
     progressDisplays[el.dataset.progress] = el;
   });
+
+  // Set up local file input
+  localFileInput = document.getElementById('local-file-input');
+  const localFileBtn = document.getElementById('local-file-btn');
+
+  if (localFileInput && localFileBtn) {
+    // When local file button is clicked, trigger file input
+    localFileBtn.addEventListener('click', () => {
+      localFileInput.click();
+    });
+
+    // When file is selected, load it
+    localFileInput.addEventListener('change', (event) => {
+      const file = event.target.files[0];
+      if (file) {
+        handleLocalFileSelection(file);
+      }
+    });
+  }
 
   timelineEl = document.getElementById('timeline');
   timelineSlider = document.getElementById('timeline-slider');
@@ -154,6 +185,28 @@ function init() {
   // AR reset button handler
   if (arResetBtn) {
     arResetBtn.addEventListener('click', resetARPlacement);
+  }
+
+  // AR mode toggle buttons
+  const arMoveBtn = document.getElementById('ar-move-btn');
+  const arRotateBtn = document.getElementById('ar-rotate-btn');
+
+  if (arMoveBtn && arRotateBtn) {
+    arMoveBtn.addEventListener('click', () => {
+      currentARMode = 'move';
+      arMoveBtn.classList.add('active');
+      arRotateBtn.classList.remove('active');
+      showARModeIndicator('move');
+      console.log('[Volumetrik] AR mode switched to: MOVE');
+    });
+
+    arRotateBtn.addEventListener('click', () => {
+      currentARMode = 'rotate';
+      arRotateBtn.classList.add('active');
+      arMoveBtn.classList.remove('active');
+      showARModeIndicator('rotate');
+      console.log('[Volumetrik] AR mode switched to: ROTATE');
+    });
   }
 
   // Combined iteration - performance optimization
@@ -368,6 +421,139 @@ function setActiveVideoButton(videoId) {
   });
 }
 
+function startMemoryMonitoring() {
+  // Stop any existing monitoring
+  if (memoryMonitorInterval) {
+    clearInterval(memoryMonitorInterval);
+    memoryMonitorInterval = null;
+  }
+
+  // Only monitor if performance.memory is available (Chrome/Edge)
+  if (!performance.memory) {
+    console.log('[Volumetrik] Memory monitoring not available on this browser');
+    return;
+  }
+
+  console.log('[Volumetrik] Starting memory monitoring for local file playback');
+
+  memoryMonitorInterval = setInterval(() => {
+    if (!currentSequence || !performance.memory) return;
+
+    const memoryMB = performance.memory.usedJSHeapSize / 1024 / 1024;
+    const limitMB = performance.memory.jsHeapSizeLimit / 1024 / 1024;
+    const percentUsed = (memoryMB / limitMB) * 100;
+
+    // Log memory usage every 10 seconds
+    if (Date.now() - lastMemoryWarning > 10000) {
+      console.log(`[Volumetrik] Memory: ${memoryMB.toFixed(0)}MB / ${limitMB.toFixed(0)}MB (${percentUsed.toFixed(1)}%)`);
+    }
+
+    // Warn if memory usage is high (>75%)
+    if (percentUsed > 75 && Date.now() - lastMemoryWarning > 30000) {
+      console.warn('[Volumetrik] HIGH MEMORY WARNING:', memoryMB.toFixed(0), 'MB used. Triggering garbage collection...');
+      lastMemoryWarning = Date.now();
+
+      // Trigger garbage collection hint
+      if (window.gc) {
+        window.gc(); // Only works with --expose-gc flag
+      }
+
+      // Force cleanup by reducing cache size temporarily
+      if (currentSequence && typeof currentSequence.setMaxCacheSize === 'function') {
+        const currentCache = IS_MOBILE ? 15 : 25;
+        const reducedCache = Math.floor(currentCache * 0.5);
+        currentSequence.setMaxCacheSize(reducedCache);
+        console.log('[Volumetrik] Reduced cache size to', reducedCache, 'frames to free memory');
+
+        // Restore cache size after 5 seconds
+        setTimeout(() => {
+          if (currentSequence) {
+            currentSequence.setMaxCacheSize(currentCache);
+            console.log('[Volumetrik] Restored cache size to', currentCache, 'frames');
+          }
+        }, 5000);
+      }
+    }
+
+    // Critical warning if >90% memory used
+    if (percentUsed > 90 && Date.now() - lastMemoryWarning > 15000) {
+      console.error('[Volumetrik] CRITICAL MEMORY WARNING:', memoryMB.toFixed(0), 'MB used. Risk of crash!');
+      lastMemoryWarning = Date.now();
+
+      // Show user warning
+      if (arHintEl) {
+        arHintEl.textContent = 'Memory warning: Large file may cause performance issues';
+        arHintEl.classList.add('show');
+        setTimeout(() => arHintEl.classList.remove('show'), 5000);
+      }
+    }
+  }, 2000); // Check every 2 seconds
+}
+
+function stopMemoryMonitoring() {
+  if (memoryMonitorInterval) {
+    clearInterval(memoryMonitorInterval);
+    memoryMonitorInterval = null;
+    console.log('[Volumetrik] Stopped memory monitoring');
+  }
+}
+
+function handleLocalFileSelection(file) {
+  console.log('[Volumetrik] Local file selected:', file.name, 'Size:', (file.size / 1024 / 1024).toFixed(2), 'MB');
+
+  // Validate file extension
+  if (!file.name.toLowerCase().endsWith('.4ds')) {
+    alert('Please select a valid .4ds file');
+    return;
+  }
+
+  // Clean up previous blob URL if exists
+  if (localFileBlobURL) {
+    URL.revokeObjectURL(localFileBlobURL);
+    localFileBlobURL = null;
+  }
+
+  // Create blob URL from file
+  localFileBlobURL = URL.createObjectURL(file);
+  localFileName = file.name;
+
+  console.log('[Volumetrik] Created blob URL for local file:', localFileBlobURL);
+
+  // Create a temporary video config for the local file
+  const localVideoConfig = {
+    name: file.name,
+    desktop: localFileBlobURL,
+    mobile: localFileBlobURL,
+    position: [0, 0, 0],
+    isLarge: file.size > 500 * 1024 * 1024, // Consider files > 500MB as large
+    maxWaitMs: 600000, // 10 minutes for local files (no network delay)
+    isLocalFile: true
+  };
+
+  // Set local file button as active
+  videoButtons.forEach((btn) => {
+    btn.classList.toggle('active', btn.id === 'local-file-btn');
+  });
+
+  // Update local file button label to show filename
+  const localFileBtn = document.getElementById('local-file-btn');
+  if (localFileBtn) {
+    const labelEl = localFileBtn.querySelector('.label');
+    const progressEl = localFileBtn.querySelector('.video-progress');
+    if (labelEl) {
+      // Truncate long filenames
+      const displayName = file.name.length > 20 ? file.name.substring(0, 17) + '...' : file.name;
+      labelEl.textContent = displayName;
+    }
+    if (progressEl) {
+      progressEl.textContent = 'Selected';
+    }
+  }
+
+  // Load the local file
+  loadLocalFile(localVideoConfig);
+}
+
 function removeSequenceMeshFromScene(sequence) {
   if (!sequence || !scene) return;
 
@@ -407,7 +593,125 @@ function removeSequenceMeshFromScene(sequence) {
   }
 }
 
+function loadLocalFile(localVideoConfig) {
+  console.log('[Volumetrik] Loading local file with config:', localVideoConfig);
+
+  // Stop memory monitoring from previous file
+  stopMemoryMonitoring();
+
+  // Clean up AR state when switching videos in AR mode
+  if (isARMode) {
+    console.log('[Volumetrik] Cleaning up AR state before switching to local file');
+
+    // Remove old mesh from placed meshes if it exists
+    if (arPlacedMeshes.length > 0 && currentSequence) {
+      const oldMesh = currentSequence.model4D?.mesh;
+      if (oldMesh) {
+        console.log('[Volumetrik] AR: Removing old placed mesh from scene');
+        scene.remove(oldMesh);
+      }
+    }
+
+    // Clear placed meshes array and reset AR placement
+    arPlacedMeshes = [];
+    arInitialPlacement = null;
+
+    // Remove and recreate reticle to prevent double reticle issue
+    if (reticle) {
+      console.log('[Volumetrik] Removing old reticle');
+      scene.remove(reticle);
+      if (reticle.geometry) reticle.geometry.dispose();
+      if (reticle.material) reticle.material.dispose();
+      reticle = null;
+    }
+
+    // Recreate reticle for new video
+    reticle = new THREE.Mesh(
+      new THREE.RingGeometry(0.4, 0.5, 32).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    );
+    reticle.matrixAutoUpdate = false;
+    reticle.visible = false;
+    scene.add(reticle);
+    console.log('[Volumetrik] Created new reticle for local file (40-50cm ring)');
+
+    // Reset hit test
+    hitTestSourceRequested = false;
+    hitTestSource = null;
+  }
+
+  // If another load is already underway, cancel it
+  if (isLoadingVideo) {
+    console.log('[Volumetrik] Cancelling in-progress load');
+
+    // Clear all timers to prevent race conditions
+    if (progressTimer) {
+      clearInterval(progressTimer);
+      progressTimer = null;
+    }
+    if (loadingTimeout) {
+      clearTimeout(loadingTimeout);
+      loadingTimeout = null;
+    }
+
+    // Destroy current sequence safely with proper cleanup
+    if (currentSequence) {
+      try {
+        removeSequenceMeshFromScene(currentSequence);
+        currentSequence.destroy();
+      } catch (destroyError) {
+        console.warn('[Volumetrik] Error destroying sequence during cancel', destroyError);
+      } finally {
+        currentSequence = null;
+      }
+    }
+
+    isLoadingVideo = false;
+  }
+
+  isLoadingVideo = true;
+  currentVideoId = 'local-file';
+  isPlaying = true;
+
+  if (!loadingEl || !loadingOverlayEl) {
+    console.error('[Volumetrik] UI not ready');
+    isLoadingVideo = false;
+    return;
+  }
+
+  showLoadingPanelForLocal(localVideoConfig);
+  resetTimeline();
+
+  const create = () => createSequenceFromLocal(localVideoConfig);
+
+  if (currentSequence) {
+    console.log('[Volumetrik] Destroying previous sequence before loading local file');
+    const seq = currentSequence;
+
+    try {
+      removeSequenceMeshFromScene(seq);
+      currentSequence = null;
+
+      if (typeof seq.destroy === 'function') {
+        seq.destroy(create);
+      } else {
+        console.warn('[Volumetrik] Sequence has no destroy method, creating new sequence anyway');
+        create();
+      }
+    } catch (error) {
+      console.warn('[Volumetrik] destroy failed:', error);
+      currentSequence = null;
+      create();
+    }
+  } else {
+    create();
+  }
+}
+
 function loadVideo(videoId, options = {}) {
+  // Stop memory monitoring when switching to streaming video
+  stopMemoryMonitoring();
+
   // Clean up AR state when switching videos in AR mode
   if (isARMode) {
     console.log('[Volumetrik] Cleaning up AR state before switching videos');
@@ -651,6 +955,33 @@ function renderLoadingProgress({ heading = 'Loading ...', decoded = 0, total = 0
   });
 }
 
+function renderLoadingProgressForLocal(localVideoConfig, decoded, total, elapsedSec) {
+  const decodedLabel = Number.isFinite(decoded) ? decoded.toLocaleString('en-US') : '--';
+  const totalLabel = Number.isFinite(total) && total > 0 ? total.toLocaleString('en-US') : '--';
+  const percent = total > 0 ? Math.min(100, Math.round((decoded / total) * 100)) : 0;
+  const percentLabel = total > 0 ? `${percent}%` : '';
+  const elapsedLabel = elapsedSec > 0 ? formatElapsed(elapsedSec) : null;
+
+  const detailItems = [];
+  if (elapsedLabel) {
+    detailItems.push(`Time elapsed: <strong>${elapsedLabel}</strong>`);
+  }
+  detailItems.push(`Loading from: <strong>Device storage</strong>`);
+
+  openLoadingPanel();
+  renderLoadingTemplate({
+    heading: 'Loading Local File...',
+    description:
+      total > 0
+        ? `Decoded <strong>${decodedLabel}</strong> of <strong>${totalLabel}</strong> frames${percentLabel ? ` (${percentLabel})` : ''}`
+        : `Preparing ${localVideoConfig.name}...`,
+    detailItems,
+    footnote: 'Local files load faster than streaming. Large files may take a few minutes to decode.',
+    showSpinner: true,
+    showCloseButton: false
+  });
+}
+
 function showLoadingPanel(videoConfig, startFrame) {
   if (!loadingEl || !loadingOverlayEl) return;
   const waitHint = getWaitHint(videoConfig, startFrame);
@@ -664,6 +995,19 @@ function showLoadingPanel(videoConfig, startFrame) {
   });
 }
 
+function showLoadingPanelForLocal(localVideoConfig) {
+  if (!loadingEl || !loadingOverlayEl) return;
+  const fileSizeMB = localVideoConfig.isLarge ? '> 500 MB' : '< 500 MB';
+  openLoadingPanel();
+  renderLoadingTemplate({
+    heading: 'Loading Local File...',
+    description: `Loading ${localVideoConfig.name} from device storage...`,
+    footnote: `File size: ${fileSizeMB}. Local files load much faster than streaming. Keep device awake during initial decode.`,
+    showSpinner: true,
+    showCloseButton: false
+  });
+}
+
 function getWaitHint(videoConfig, startFrame) {
   if (videoConfig.isLarge) {
     if (startFrame > 0) {
@@ -672,6 +1016,151 @@ function getWaitHint(videoConfig, startFrame) {
     return 'Large file (~3 GB). First load can take up to 2-3 minutes on mobile. Keep the device awake and ensure a reliable connection.';
   }
   return 'This may take 10-30 seconds depending on your network speed.';
+}
+
+function createSequenceFromLocal(localVideoConfig) {
+  const startFrame = 0;
+  const resumePlayback = true;
+
+  // For local files, use the same blob URL for both desktop and mobile
+  const primaryUrl = localVideoConfig.desktop;
+  const mobileUrl = localVideoConfig.mobile;
+
+  try {
+    console.log('[Volumetrik] Creating new WEB4DS sequence for local file:', localVideoConfig.name);
+    currentSequence = new WEB4DS(
+      'local-file',
+      primaryUrl,
+      mobileUrl,
+      '',
+      localVideoConfig.position,
+      renderer,
+      scene,
+      camera
+    );
+
+    console.log('[Volumetrik] WEB4DS sequence created for local file');
+    currentSequence.startFrame = startFrame;
+
+    // MEMORY-OPTIMIZED settings for LOCAL files
+    // Use STREAMING mode with dynamic cleanup to prevent memory overflow
+    // Even though it's local storage (fast), we must manage memory carefully for large files
+    const isLargeFile = localVideoConfig.isLarge || false;
+
+    if (IS_MOBILE) {
+      // Mobile: STREAMING mode with small cache to prevent memory overflow
+      // Large files (3GB) will crash if we cache too much
+      currentSequence.keepsChunksInCache(false); // STREAMING: Release old chunks
+      currentSequence.setChunkSize(6 * 1024 * 1024); // 6MB chunks (balanced)
+      currentSequence.setMaxCacheSize(15); // 15 frames cache (~90MB max)
+      console.log('[Volumetrik] Mobile LOCAL file: 6MB chunks, 15 frame cache, STREAMING mode (memory-safe)');
+    } else {
+      // Desktop: STREAMING mode for large files, moderate caching for small files
+      if (isLargeFile) {
+        // Large desktop files: STREAMING mode to prevent memory overflow
+        currentSequence.keepsChunksInCache(false); // STREAMING: Release old chunks
+        currentSequence.setChunkSize(10 * 1024 * 1024); // 10MB chunks
+        currentSequence.setMaxCacheSize(25); // 25 frames cache (~250MB max)
+        console.log('[Volumetrik] Desktop large LOCAL file: 10MB chunks, 25 frame cache, STREAMING mode (memory-safe)');
+      } else {
+        // Small desktop files: Moderate caching is safe
+        currentSequence.keepsChunksInCache(false); // Still use STREAMING for safety
+        currentSequence.setChunkSize(12 * 1024 * 1024); // 12MB chunks
+        currentSequence.setMaxCacheSize(30); // 30 frames cache (~360MB max)
+        console.log('[Volumetrik] Desktop small LOCAL file: 12MB chunks, 30 frame cache, STREAMING mode (memory-safe)');
+      }
+    }
+
+    currentSequence.shouldResumePlayback = resumePlayback;
+
+    try {
+      if (typeof currentSequence.setWaitingGif === 'function') {
+        currentSequence.setWaitingGif('./web4dv/waiter/waiter.gif');
+      }
+    } catch (error) {
+      console.warn('[Volumetrik] Unable to set waiting gif', error);
+    }
+
+    // Extended timeout for local files (10 minutes) - local files can be decoded faster but large files still need time
+    const maxWaitMs = localVideoConfig.maxWaitMs || 600000;
+    const loadStart = performance.now ? performance.now() : Date.now();
+
+    console.log('[Volumetrik] Starting decode for local file', { name: localVideoConfig.name, startFrame, resumePlayback });
+    // DON'T auto-play on load (false, false) - prevents rewinding during buffering
+    currentSequence.load(false, false);
+
+    progressTimer = setInterval(() => {
+      // Safety check - clear if sequence destroyed
+      if (!currentSequence) {
+        if (progressTimer) {
+          clearInterval(progressTimer);
+          progressTimer = null;
+        }
+        isLoadingVideo = false;
+        return;
+      }
+
+      const decoded = currentSequence.sequenceDecodedFrames || 0;
+      const total = currentSequence.sequenceTotalLength || 0;
+
+      // Stop polling when loaded
+      if (currentSequence.isLoaded) {
+        if (progressTimer) {
+          clearInterval(progressTimer);
+          progressTimer = null;
+        }
+        finalizeLoadForLocal(localVideoConfig, startFrame);
+        return;
+      }
+
+      const elapsedMs = (performance.now ? performance.now() : Date.now()) - loadStart;
+      const elapsedSec = Math.max(0, Math.floor(elapsedMs / 1000));
+      renderLoadingProgressForLocal(localVideoConfig, decoded, total, elapsedSec);
+    }, PROGRESS_POLL_INTERVAL);
+
+    loadingTimeout = setTimeout(() => {
+      if (!currentSequence || currentSequence.isLoaded) {
+        isLoadingVideo = false;
+        return;
+      }
+      console.warn('[Volumetrik] Loading timeout for local file');
+      if (progressTimer) {
+        clearInterval(progressTimer);
+        progressTimer = null;
+      }
+      isLoadingVideo = false;
+      renderLoadingTemplate({
+        heading: 'Loading Timeout',
+        headingColor: '#ff6b6b',
+        description: 'Could not finish loading this local file in time.',
+        detailItems: [
+          'The file may be corrupted or too large.',
+          'Try a smaller file or ensure your device has enough free memory.'
+        ],
+        showSpinner: false,
+        showCloseButton: true
+      });
+    }, maxWaitMs);
+  } catch (error) {
+    console.error('[Volumetrik] Failed to create sequence for local file', error);
+    isLoadingVideo = false;
+    if (progressTimer) {
+      clearInterval(progressTimer);
+      progressTimer = null;
+    }
+    if (loadingTimeout) {
+      clearTimeout(loadingTimeout);
+      loadingTimeout = null;
+    }
+    openLoadingPanel();
+    renderLoadingTemplate({
+      heading: 'Unexpected error',
+      headingColor: '#ff6b6b',
+      description: 'Something went wrong while loading this local file. Please try again.',
+      showSpinner: false,
+      showCloseButton: true
+    });
+  }
 }
 
 function createSequence(videoId, videoConfig, options = {}) {
@@ -817,6 +1306,68 @@ function createSequence(videoId, videoConfig, options = {}) {
     });
     setVideoProgress(videoId, { status: 'error' });
   }
+}
+
+function finalizeLoadForLocal(localVideoConfig, startFrame) {
+  if (!currentSequence) {
+    isLoadingVideo = false;
+    return;
+  }
+
+  console.log('[Volumetrik] Finalizing load for local file:', localVideoConfig.name, '- mesh in scene:', currentSequence.model4D?.mesh ? 'YES' : 'NO');
+
+  // CRITICAL: Force disable shadows after WEB4DS library enables them
+  if (renderer) {
+    renderer.shadowMap.enabled = false;
+    console.log('[Volumetrik] Shadow rendering FORCE DISABLED after sequence load');
+  }
+
+  // Disable shadows on the volumetric mesh and library objects
+  if (currentSequence.model4D) {
+    if (currentSequence.model4D.mesh) {
+      currentSequence.model4D.mesh.castShadow = false;
+      currentSequence.model4D.mesh.receiveShadow = false;
+      console.log('[Volumetrik] Disabled shadows on volumetric mesh');
+    }
+    if (currentSequence.model4D.surface) {
+      currentSequence.model4D.surface.receiveShadow = false;
+      currentSequence.model4D.surface.visible = false;
+      console.log('[Volumetrik] Hidden ShadowMaterial surface');
+    }
+    if (currentSequence.model4D.light) {
+      currentSequence.model4D.light.castShadow = false;
+      console.log('[Volumetrik] Disabled castShadow on library light');
+    }
+  }
+
+  hideLoadingPanel();
+
+  // Clear timeout since loading completed successfully
+  if (loadingTimeout) {
+    clearTimeout(loadingTimeout);
+    loadingTimeout = null;
+  }
+
+  isLoadingVideo = false;
+
+  const totalFrames = currentSequence.sequenceTotalLength || 0;
+  const frameRate = currentSequence.frameRate || 30;
+  prepareTimeline(totalFrames, frameRate, startFrame);
+
+  // DON'T auto-play local files - pause and let user start manually
+  // This prevents rewinding issues during buffering
+  currentSequence.pause();
+  isPlaying = false;
+
+  if (isMuted) {
+    currentSequence.mute();
+  }
+
+  console.log('[Volumetrik] Local file loaded successfully:', localVideoConfig.name, 'Total frames:', totalFrames);
+  console.log('[Volumetrik] Local file paused - press Play to start. This prevents rewinding during buffering.');
+
+  // Start memory monitoring for local files to prevent crashes
+  startMemoryMonitoring();
 }
 
 function finalizeLoad(videoId, videoConfig, startFrame) {
@@ -1601,32 +2152,29 @@ function onARTouchStart(event) {
     arTouchState.touches = Array.from(event.touches);
 
     if (event.touches.length === 1) {
-      // Single touch - start with rotation enabled, switch to move mode if long press completes
+      // Single touch - use button-controlled mode (rotate or move)
       const touch = event.touches[0];
       arTouchState.selectedMesh = arPlacedMeshes[0];
       arTouchState.longPressStartPos = { x: touch.clientX, y: touch.clientY };
-      arTouchState.isDragging = true; // Enable rotation immediately for light touches
 
-      // Show rotation mode indicator
-      showARModeIndicator('rotate');
-
-      // Start long-press timer (500ms) - will switch to move mode if user holds still
-      arTouchState.longPressTimer = setTimeout(() => {
-        // Long press detected without significant movement - activate move mode
+      // Set mode based on button toggle
+      if (currentARMode === 'rotate') {
+        arTouchState.isDragging = true;
+        arTouchState.isMoving = false;
+        showARModeIndicator('rotate');
+        console.log('[Volumetrik] AR: Single touch started - ROTATION mode (button controlled)');
+      } else if (currentARMode === 'move') {
         arTouchState.isMoving = true;
-        arTouchState.isDragging = false; // Disable rotation, enable move
-        console.log('[Volumetrik] AR: MOVE MODE ACTIVATED - Hold and drag to reposition on floor');
-
-        // Show move mode indicator
+        arTouchState.isDragging = false;
         showARModeIndicator('move');
+        console.log('[Volumetrik] AR: Single touch started - MOVE mode (button controlled)');
 
-        // Add stronger haptic feedback
+        // Add haptic feedback for move mode
         if (navigator.vibrate) {
           navigator.vibrate(100); // Longer vibration for move mode
         }
-      }, 500);
+      }
 
-      console.log('[Volumetrik] AR: Single touch started - rotation enabled, long-press for move mode');
       event.preventDefault();
     } else if (event.touches.length === 2) {
       // Two fingers - scale mode
