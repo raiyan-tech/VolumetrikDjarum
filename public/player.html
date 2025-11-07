@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="description" content="Volumetric Video Streaming Demo - 4DView Player" />
+  <title>Spectralysium - Preservasi Seni Gerak Demo</title>
+
+  <!-- THREE.js Library -->
+  <script src="./lib/three.min.js"></script>
+  <script src="./lib/WebGL.js"></script>
+  <script src="./lib/OrbitControls.js"></script>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #1a1a2e;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      position: relative;
+      color: #fff;
+      margin: 0;
+      padding: 0;
+    }
+
+    #canvas4D {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    .branding {
+      position: absolute;
+      top: calc(env(safe-area-inset-top, 12px) + 12px);
+      left: 16px;
+      right: auto;
+      max-width: 50%;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(17, 25, 40, 0.55);
+      backdrop-filter: blur(14px);
+      padding: 8px 14px;
+      border-radius: 22px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 14px 40px rgba(15, 23, 42, 0.2);
+    }
+
+    .branding .logo {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: #fff;
+      padding: 3px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      flex-shrink: 0;
+    }
+
+    .branding .logo img {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .branding .text {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+      line-height: 1.3;
+    }
+
+    .branding .title {
+      font-size: 15px;
+      font-weight: 700;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+      letter-spacing: 0.3px;
+    }
+
+    .branding .meta {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .branding .creator {
+      font-weight: 600;
+      opacity: 0.95;
+      letter-spacing: 0.2px;
+    }
+
+    .branding .contact-info {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 10px;
+      opacity: 0.75;
+      font-weight: 500;
+    }
+
+    .branding .contact {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .branding .contact::before {
+      content: '•';
+      font-size: 8px;
+      opacity: 0.5;
+    }
+
+    .branding .contact:first-child::before {
+      content: '';
+    }
+
+    /* User Profile */
+    .user-profile {
+      position: absolute;
+      top: calc(env(safe-area-inset-top, 12px) + 12px);
+      right: 16px;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(17, 25, 40, 0.55);
+      backdrop-filter: blur(14px);
+      padding: 6px 12px 6px 6px;
+      border-radius: 22px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 14px 40px rgba(15, 23, 42, 0.2);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .user-profile:hover {
+      background: rgba(17, 25, 40, 0.7);
+      border-color: rgba(255, 255, 255, 0.24);
+    }
+
+    .user-profile .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      overflow: hidden;
+      flex-shrink: 0;
+      background: rgba(167, 139, 250, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    .user-profile .avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .user-profile .user-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .user-profile .user-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      line-height: 1.2;
+      max-width: 120px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .user-profile .user-email {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.6);
+      line-height: 1.2;
+      max-width: 120px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .user-profile .sign-out-btn {
+      background: rgba(220, 38, 38, 0.15);
+      border: 1px solid rgba(220, 38, 38, 0.3);
+      color: #fca5a5;
+      padding: 4px 8px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .user-profile .sign-out-btn:hover {
+      background: rgba(220, 38, 38, 0.25);
+      border-color: rgba(220, 38, 38, 0.5);
+    }
+
+    .video-selector {
+      position: absolute;
+      top: calc(env(safe-area-inset-top, 12px) + 90px);  /* Moved down from 58px to 90px */
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      display: flex;
+      gap: 6px;  /* Reduced from 8px */
+      padding: 8px 12px;  /* Reduced from 10px 14px */
+      background: rgba(255, 255, 255, 0.22);
+      backdrop-filter: blur(12px);
+      border-radius: 16px;  /* Slightly smaller from 18px */
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.25);
+      max-width: calc(100vw - 48px);
+    }
+
+    .video-btn {
+      background: rgba(255, 255, 255, 0.85);
+      border: none;
+      padding: 8px 14px;  /* Reduced from 10px 18px */
+      border-radius: 16px;  /* Reduced from 20px */
+      cursor: pointer;
+      transition: all 0.2s ease;
+      color: #1f2937;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;  /* Reduced from 4px */
+      min-width: 100px;  /* Reduced from 120px */
+    }
+
+    .video-btn.active {
+      background: #ffffff;
+      color: #4c51bf;
+      box-shadow: 0 6px 20px rgba(76, 81, 191, 0.25);
+    }
+
+    .video-btn .label {
+      font-size: 11px;  /* Reduced from 12px */
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .video-btn .video-progress {
+      font-size: 9px;  /* Reduced from 10px */
+      font-weight: 500;
+      opacity: 0.7;
+    }
+
+    .controls {
+      position: absolute;
+      bottom: calc(env(safe-area-inset-bottom, 24px) + 90px);
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      display: flex;
+      gap: 12px;
+      padding: 16px;
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(10px);
+      border-radius: 50px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .btn {
+      background: rgba(255, 255, 255, 0.92);
+      border: none;
+      border-radius: 50%;
+      width: 56px;
+      height: 56px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      color: #334155;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .btn:hover {
+      transform: scale(1.08);
+      background: #fff;
+    }
+
+    .timeline {
+      position: absolute;
+      left: 50%;
+      bottom: calc(env(safe-area-inset-bottom, 24px) + 40px);
+      transform: translateX(-50%);
+      width: min(80vw, 560px);
+      display: none;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+      z-index: 100;
+    }
+
+    .timeline input[type="range"] {
+      width: 100%;
+      appearance: none;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.45);
+      outline: none;
+      cursor: pointer;
+    }
+
+    .timeline input[type="range"]::-webkit-slider-thumb {
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #60a5fa;
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8);
+    }
+
+    .timeline input[type="range"]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #60a5fa;
+      border: 2px solid rgba(255, 255, 255, 0.8);
+    }
+
+    .timeline-info {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      font-size: 12px;
+      opacity: 0.85;
+    }
+
+    .progress-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: calc(env(safe-area-inset-bottom, 0px) + 70px);
+      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+      background: rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(10px);
+      z-index: 90;
+    }
+
+    .progress-fill {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      height: 4px;
+      background: #60a5fa;
+      width: 0;
+      transition: width 0.1s linear;
+    }
+
+    .progress-info {
+      position: absolute;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+      right: 16px;
+      font-size: 12px;
+      display: flex;
+      gap: 16px;
+      opacity: 0.85;
+    }
+
+    .loading,
+    .loading-overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: none;
+    }
+
+    .loading {
+      z-index: 110;
+      background: rgba(0, 0, 0, 0.85);
+      color: #fff;
+      padding: 24px 32px;
+      border-radius: 16px;
+      text-align: center;
+      width: 260px;
+    }
+
+    .loading.show {
+      display: block;
+    }
+
+    .loading-overlay {
+      z-index: 109;
+      width: 120px;
+      height: 120px;
+      border-radius: 16px;
+      background: rgba(15, 23, 42, 0.45);
+      display: none;
+    }
+
+    .loading-overlay.show {
+      display: block;
+    }
+
+    .spinner {
+      border: 3px solid rgba(255, 255, 255, 0.25);
+      border-top: 3px solid #fff;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 12px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .instructions {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 105;
+      background: rgba(15, 23, 42, 0.9);
+      color: #fff;
+      padding: 32px;
+      border-radius: 16px;
+      max-width: 400px;
+      text-align: center;
+      display: none;
+      box-shadow: 0 20px 40px rgba(15, 23, 42, 0.5);
+    }
+
+    .instructions.show {
+      display: block;
+    }
+
+    .instructions h2 {
+      margin-bottom: 16px;
+      font-size: 24px;
+    }
+
+    .instructions p {
+      margin-bottom: 12px;
+      line-height: 1.6;
+      opacity: 0.9;
+    }
+
+    .instructions button {
+      margin-top: 16px;
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      padding: 12px 32px;
+      border-radius: 24px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    .instructions button:hover {
+      background: #4f46e5;
+    }
+
+    /* AR Button in Controls */
+    #ar-button {
+      display: none; /* Hidden by default, shown via JS when AR is available */
+    }
+
+    /* AR UI Overlay - Hints and Reset Button */
+    .ar-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none; /* Allow touch to pass through to AR scene */
+      z-index: 95;
+      display: none;
+    }
+
+    .ar-overlay.show {
+      display: block;
+    }
+
+    /* AR Hint Message (center of screen) */
+    .ar-hint {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(10px);
+      color: #fff;
+      padding: 16px 24px;
+      border-radius: 16px;
+      font-size: 15px;
+      font-weight: 600;
+      text-align: center;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      max-width: 90vw;
+      line-height: 1.5;
+    }
+
+    .ar-hint.show {
+      opacity: 1;
+    }
+
+    /* AR Mode Indicator (bottom center, above progress bar) */
+    .ar-mode-indicator {
+      position: absolute;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(10px);
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+      opacity: 0;
+      transition: opacity 0.3s ease, background 0.3s ease;
+      pointer-events: none;
+    }
+
+    .ar-mode-indicator.show {
+      opacity: 1;
+    }
+
+    .ar-mode-indicator.rotate-mode {
+      background: rgba(99, 102, 241, 0.9); /* Indigo for rotation */
+    }
+
+    .ar-mode-indicator.move-mode {
+      background: rgba(16, 185, 129, 0.9); /* Green for move */
+    }
+
+    .ar-mode-indicator.scale-mode {
+      background: rgba(245, 158, 11, 0.9); /* Amber for scale */
+    }
+
+    /* AR Reset Button (top right corner) */
+    .ar-reset-btn {
+      position: absolute;
+      top: calc(env(safe-area-inset-top, 12px) + 12px);
+      right: 16px;
+      background: rgba(239, 68, 68, 0.9);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 52px;
+      height: 52px;
+      font-size: 24px;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      pointer-events: auto; /* Enable touch for this button */
+      z-index: 101;
+    }
+
+    .ar-reset-btn:active {
+      transform: scale(0.95);
+      background: rgba(220, 38, 38, 1);
+    }
+
+    /* AR Mode Toggle Buttons (Move/Rotate) */
+    .ar-mode-buttons {
+      position: absolute;
+      bottom: calc(env(safe-area-inset-bottom, 24px) + 240px); /* Raised to clear timeline */
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 12px;
+      pointer-events: auto;
+      z-index: 96;
+    }
+
+    .ar-mode-btn {
+      background: rgba(255, 255, 255, 0.9);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      padding: 12px 20px;
+      border-radius: 24px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #334155;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .ar-mode-btn:active {
+      transform: scale(0.95);
+    }
+
+    .ar-mode-btn.active {
+      background: #6366f1;
+      color: #fff;
+      border-color: #6366f1;
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+    }
+
+    .ar-mode-btn .icon {
+      font-size: 18px;
+    }
+
+    @media (max-width: 768px) {
+      .branding {
+        left: 12px;
+        right: 12px;
+        padding: 8px 12px;
+        border-radius: 18px;
+      }
+
+      .branding .title {
+        font-size: 14px;
+      }
+
+      .branding .meta {
+        font-size: 11px;
+        gap: 8px;
+        white-space: nowrap;
+      }
+
+      .branding .text {
+        gap: 2px;
+      }
+
+      .branding .title {
+        font-size: 13px;
+      }
+
+      .branding .meta {
+        font-size: 10px;
+      }
+
+      .branding .contact-info {
+        font-size: 9px;
+        gap: 6px;
+      }
+
+      .video-selector {
+        top: calc(env(safe-area-inset-top, 12px) + 110px);  /* Increased to avoid overlap with branding */
+        width: calc(100vw - 24px);
+        left: 50%;
+        transform: translateX(-50%);
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        gap: 5px;  /* Reduced from 6px */
+        padding: 8px 10px;  /* Reduced from 10px 12px */
+        scrollbar-width: none;
+      }
+
+      .video-selector::-webkit-scrollbar {
+        display: none;
+      }
+
+      .video-btn {
+        flex: 0 0 auto;
+        min-width: 95px;  /* Reduced from 110px */
+        padding: 8px 12px;  /* Reduced from 10px 14px */
+      }
+
+      .controls {
+        bottom: calc(env(safe-area-inset-bottom, 24px) + 108px);
+        gap: 8px;
+        padding: 12px;
+      }
+
+      .btn {
+        width: 48px;
+        height: 48px;
+        font-size: 18px;
+      }
+
+      .timeline {
+        width: calc(100vw - 48px);
+        bottom: calc(env(safe-area-inset-bottom, 24px) + 180px);
+      }
+
+      .progress-bar {
+        height: calc(env(safe-area-inset-bottom, 0px) + 56px);
+        padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+      }
+    }
+  </style>
+
+  <!-- Authentication Guard -->
+  <script type="module">
+    import { initAuthGuard } from './auth.js';
+    // Redirect to login if not authenticated
+    initAuthGuard('/login.html');
+  </script>
+</head>
+<body>
+  <div class="branding">
+    <div class="logo">
+      <img src="./assets/logo.png" alt="Spectralysium Logo" />
+    </div>
+    <div class="text">
+      <span class="title">Spectralysium Player</span>
+      <div class="meta">
+        <span class="creator">Raiyan Laksamana</span>
+        <div class="contact-info">
+          <span class="contact">raiyan@spectralysium.com</span>
+          <span class="contact">+62 812 8298 4548</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- User Profile -->
+  <div class="user-profile" id="user-profile" style="display: none;">
+    <div class="avatar" id="user-avatar">
+      👤
+    </div>
+    <div class="user-info">
+      <div class="user-name" id="user-name">Loading...</div>
+      <div class="user-email" id="user-email"></div>
+    </div>
+    <button class="sign-out-btn" id="sign-out-btn">Sign Out</button>
+  </div>
+
+  <div class="video-selector" id="video-selector">
+    <button class="video-btn" id="local-file-btn" title="Load local 4DS file">
+      <span class="label">📁 Local File</span>
+      <span class="video-progress">Browse</span>
+    </button>
+    <button class="video-btn active" data-video="dance-nani">
+      <span class="label">Topeng Losari</span>
+      <span class="video-progress" data-progress="dance-nani">--</span>
+    </button>
+    <button class="video-btn" data-video="dance-didik">
+      <span class="label">Dua Muka</span>
+      <span class="video-progress" data-progress="dance-didik">--</span>
+    </button>
+    <button class="video-btn" data-video="martial-asep">
+      <span class="label">Golok Panglipur</span>
+      <span class="video-progress" data-progress="martial-asep">--</span>
+    </button>
+    <button class="video-btn" data-video="martial-dian">
+      <span class="label">Kipas Panglipur</span>
+      <span class="video-progress" data-progress="martial-dian">--</span>
+    </button>
+    <button class="video-btn" data-video="music-greybeard">
+      <span class="label">Musisi</span>
+      <span class="video-progress" data-progress="music-greybeard">--</span>
+    </button>
+    <button class="video-btn" data-video="martial-duel">
+      <span class="label">Duel Panglipur</span>
+      <span class="video-progress" data-progress="martial-duel">--</span>
+    </button>
+  </div>
+
+  <!-- Hidden file input for local file selection -->
+  <input type="file" id="local-file-input" accept=".4ds" style="display: none;" />
+
+  <canvas id="canvas4D"></canvas>
+
+  <div class="loading-overlay" id="loading-overlay"></div>
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div>Loading volumetric video...</div>
+  </div>
+
+    <div class="instructions" id="instructions">
+    <h2>Welcome!</h2>
+    <p>Select a performance above to start streaming volumetric content.</p>
+    <p>Use the AR button on mobile to place the performer in your space.</p>
+    <p>Use mouse or touch to rotate, pan, and zoom in the 3D scene.</p>
+    <button type="button" onclick="document.getElementById('instructions').classList.remove('show')">Got it!</button>
+  </div>
+
+  <div class="controls">
+    <button class="btn" id="btn-play" title="Play">&#9658;</button>
+    <button class="btn" id="btn-pause" title="Pause">&#10073;&#10073;</button>
+    <button class="btn" id="btn-restart" title="Restart">&#10226;</button>
+    <button class="btn" id="btn-mute" title="Mute">&#128266;</button>
+    <button class="btn" id="ar-button" title="View in AR">AR</button>
+  </div>
+
+  <div class="timeline" id="timeline">
+    <input type="range" id="timeline-slider" min="0" max="100" value="0" step="1" aria-label="Playback timeline" />
+    <div class="timeline-info">
+      <span id="time-current">00:00</span>
+      <span>/</span>
+      <span id="time-total">00:00</span>
+    </div>
+  </div>
+
+  <div class="progress-bar">
+    <div class="progress-fill" id="progress-fill"></div>
+    <div class="progress-info">
+      <span>Frame: <span id="frame-current">0</span> / <span id="frame-total">0</span></span>
+      <span>Buffered: <span id="frame-buffered">0</span> frames</span>
+    </div>
+  </div>
+
+  <!-- AR Overlay UI -->
+  <div class="ar-overlay" id="ar-overlay">
+    <div class="ar-hint" id="ar-hint">Tap anywhere to place actor</div>
+    <div class="ar-mode-indicator" id="ar-mode-indicator">Drag to rotate</div>
+    <button class="ar-reset-btn" id="ar-reset-btn" title="Reset position">&#8634;</button>
+
+    <!-- AR Mode Toggle Buttons -->
+    <div class="ar-mode-buttons">
+      <button class="ar-mode-btn" id="ar-move-btn" data-mode="move">
+        <span class="icon">&#9968;</span>
+        <span>Move</span>
+      </button>
+      <button class="ar-mode-btn active" id="ar-rotate-btn" data-mode="rotate">
+        <span class="icon">&#8635;</span>
+        <span>Rotate</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- User Profile Handler -->
+  <script type="module">
+    import { onAuthChange, signOutUser } from './auth.js';
+
+    // Update user profile UI when auth state changes
+    onAuthChange((user) => {
+      const profileEl = document.getElementById('user-profile');
+      const avatarEl = document.getElementById('user-avatar');
+      const nameEl = document.getElementById('user-name');
+      const emailEl = document.getElementById('user-email');
+
+      if (user && profileEl) {
+        // Show profile
+        profileEl.style.display = 'flex';
+
+        // Set avatar
+        if (user.photoURL) {
+          avatarEl.innerHTML = `<img src="${user.photoURL}" alt="User avatar">`;
+        } else {
+          avatarEl.textContent = user.displayName ? user.displayName[0].toUpperCase() : '👤';
+        }
+
+        // Set name and email
+        nameEl.textContent = user.displayName || 'User';
+        emailEl.textContent = user.email || '';
+
+        console.log('[UI] User profile updated:', user.email);
+      } else {
+        // Hide profile if not authenticated
+        if (profileEl) {
+          profileEl.style.display = 'none';
+        }
+      }
+    });
+
+    // Handle sign-out button
+    document.getElementById('sign-out-btn').addEventListener('click', async (e) => {
+      e.stopPropagation(); // Prevent profile click event
+
+      if (confirm('Are you sure you want to sign out?')) {
+        try {
+          await signOutUser();
+          console.log('[UI] User signed out, redirecting to login...');
+          window.location.href = '/login.html';
+        } catch (error) {
+          console.error('[UI] Sign-out error:', error);
+          alert('Failed to sign out. Please try again.');
+        }
+      }
+    });
+  </script>
+
+  <script type="module" src="./app.js?v=20251011-3"></script>
+</body>
+</html>

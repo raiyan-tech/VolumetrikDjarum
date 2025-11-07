@@ -1,0 +1,9 @@
+- [ ] Read project documentation and setup guides
+- [ ] Analyze package.json and project configuration
+- [ ] Examine main application files (app.js, index.html)
+- [ ] Understand the 4D viewer components and web4dv integration
+- [ ] Review Firebase configuration and authentication setup
+- [ ] Analyze the public directory structure and assets
+- [ ] Review admin functionality and user management
+- [ ] Examine CORS and deployment configuration
+- [ ] Provide comprehensive codebase explanation

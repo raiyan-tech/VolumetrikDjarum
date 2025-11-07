@@ -1,0 +1,22 @@
+{
+  "name": "volumetrik-platform",
+  "version": "1.0.0",
+  "description": "Volumetric Performance Platform with Google OAuth",
+  "scripts": {
+    "add-admin": "node add-admin.js",
+    "serve": "firebase serve",
+    "deploy": "firebase deploy"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0"
+  },
+  "devDependencies": {},
+  "keywords": [
+    "volumetric",
+    "3d",
+    "ar",
+    "firebase"
+  ],
+  "author": "Raiyan Laksamana <raiyan@spectralysium.com>",
+  "license": "ISC"
+}

@@ -47,16 +47,13 @@ import {
 // ============================================================================
 // FIREBASE CONFIGURATION
 // ============================================================================
-// TODO: Replace with your actual Firebase config from Firebase Console
-// Get this from: Firebase Console > Project Settings > Your apps > Config
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY_HERE",
+  apiKey: "AIzaSyDmGB7rrKoM20RStIVUDAfz0H79eu4b3tA",
   authDomain: "spectralysium-volumetric-demo.firebaseapp.com",
   projectId: "spectralysium-volumetric-demo",
-  storageBucket: "spectralysium-volumetric-demo.appspot.com",
-  messagingSenderId: "YOUR_MESSAGING_ID",
-  appId: "YOUR_APP_ID",
-  measurementId: "YOUR_MEASUREMENT_ID" // Optional
+  storageBucket: "spectralysium-volumetric-demo.firebasestorage.app",
+  messagingSenderId: "980216689609",
+  appId: "1:980216689609:web:882ac39ba4c30a9ec76e18"
 };
 
 // ============================================================================

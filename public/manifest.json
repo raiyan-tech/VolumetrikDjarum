@@ -1,0 +1,207 @@
+{
+  "name": "Volumetrik - Volumetric Performance Platform",
+  "short_name": "Volumetrik",
+  "description": "Experience Indonesian cultural heritage in stunning 3D. Watch traditional dance, martial arts, and music performances in AR.",
+  "start_url": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "theme_color": "#0f0f1a",
+  "background_color": "#0f0f1a",
+  "scope": "/",
+  "categories": ["entertainment", "education", "ar", "culture"],
+  "lang": "en-US",
+  "dir": "ltr",
+
+  "icons": [
+    {
+      "src": "/assets/icon-72x72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icon-128x128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icon-144x144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icon-152x152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icon-384x384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icon-maskable-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/assets/icon-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+
+  "screenshots": [
+    {
+      "src": "/assets/screenshot-wide-1.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Volumetric performance in 3D"
+    },
+    {
+      "src": "/assets/screenshot-wide-2.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "AR mode on mobile"
+    },
+    {
+      "src": "/assets/screenshot-narrow-1.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Performance library"
+    },
+    {
+      "src": "/assets/screenshot-narrow-2.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "3D volumetric playback"
+    }
+  ],
+
+  "shortcuts": [
+    {
+      "name": "Browse Library",
+      "short_name": "Library",
+      "description": "Browse volumetric performances",
+      "url": "/library.html",
+      "icons": [
+        {
+          "src": "/assets/shortcut-library.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "View in AR",
+      "short_name": "AR Mode",
+      "description": "Experience performances in augmented reality",
+      "url": "/player.html?ar=true",
+      "icons": [
+        {
+          "src": "/assets/shortcut-ar.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Admin Console",
+      "short_name": "Admin",
+      "description": "Manage users and analytics",
+      "url": "/admin/index.html",
+      "icons": [
+        {
+          "src": "/assets/shortcut-admin.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "4ds_file",
+          "accept": [".4ds", "application/octet-stream"]
+        }
+      ]
+    }
+  },
+
+  "protocol_handlers": [
+    {
+      "protocol": "web+volumetrik",
+      "url": "/player.html?video=%s"
+    }
+  ],
+
+  "related_applications": [],
+  "prefer_related_applications": false,
+
+  "file_handlers": [
+    {
+      "action": "/player.html",
+      "accept": {
+        "application/octet-stream": [".4ds"]
+      },
+      "launch_type": "single-client"
+    }
+  ],
+
+  "edge_side_panel": {
+    "preferred_width": 480
+  },
+
+  "handle_links": "preferred",
+
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "auto"]
+  },
+
+  "permissions_policy": {
+    "camera": ["self"],
+    "microphone": [],
+    "geolocation": [],
+    "xr-spatial-tracking": ["self"]
+  },
+
+  "iarc_rating_id": ""
+}

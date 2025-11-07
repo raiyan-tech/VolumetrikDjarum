@@ -21,9 +21,7 @@ const VIDEO_LIBRARY = {
     name: "Dua Muka",
     desktop: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/DANCE/Didik_Take_01_30_00fps_FILTERED_DESKTOP_720.4ds",
     mobile: "https://storage.googleapis.com/spectralysium-volumetrik-4ds-files/DANCE/Didik_Take_01_30_00fps_FILTERED_MOBILE_720.4ds",
-    position: [0, 0, 0],
-    isLarge: true,
-    maxWaitMs: 480000
+    position: [0, 0, 0]
   },
   "martial-asep": {
     name: "Golok Panglipur",
@@ -81,7 +79,18 @@ let camera;
 let controls;
 
 let currentSequence = null;
-let currentVideoId = 'dance-nani';
+
+// Read video ID from URL parameter, or default to Topeng Losari
+function getVideoIdFromURL() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const videoParam = urlParams.get('video');
+  if (videoParam && VIDEO_LIBRARY[videoParam]) {
+    return videoParam;
+  }
+  return 'dance-nani'; // Default to Topeng Losari
+}
+
+let currentVideoId = getVideoIdFromURL();
 let isPlaying = false;
 let isMuted = false;
 let isARMode = false;
@@ -227,6 +236,13 @@ function init() {
   setupEventListeners();
   resetTimeline();
   setActiveVideoButton(currentVideoId);
+
+  // Auto-load video from URL parameter
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has('video') && VIDEO_LIBRARY[currentVideoId]) {
+    console.log('[Volumetrik] Auto-loading video from URL:', currentVideoId);
+    loadVideo(currentVideoId, { resumePlayback: true });
+  }
 
   window.addEventListener('resize', onWindowResize);
 
@@ -1191,20 +1207,34 @@ function createSequence(videoId, videoConfig, options = {}) {
     // Optimize caching based on device and file size
     const isLargeFile = videoConfig.isLarge || false;
 
+    // Check for video-specific custom chunk/cache sizes
+    const customChunkSize = videoConfig.customChunkSize || {};
+    const customCacheSize = videoConfig.customCacheSize || {};
+
     if (IS_MOBILE) {
       // Mobile: streaming mode to prevent memory issues
       currentSequence.keepsChunksInCache(false);
-      currentSequence.setChunkSize(CHUNK_SIZE_MOBILE);
-      currentSequence.setMaxCacheSize(CACHE_SIZE_MOBILE);
-      console.log('[Volumetrik] Mobile:', (CHUNK_SIZE_MOBILE / 1024 / 1024).toFixed(1), 'MB chunks,', CACHE_SIZE_MOBILE, 'frame cache');
+
+      // Use custom chunk size if available, otherwise default
+      const chunkSize = customChunkSize.mobile || CHUNK_SIZE_MOBILE;
+      const cacheSize = customCacheSize.mobile || CACHE_SIZE_MOBILE;
+
+      currentSequence.setChunkSize(chunkSize);
+      currentSequence.setMaxCacheSize(cacheSize);
+      console.log('[Volumetrik] Mobile:', (chunkSize / 1024 / 1024).toFixed(1), 'MB chunks,', cacheSize, 'frame cache', customChunkSize.mobile ? '(custom)' : '(default)');
     } else {
       // Desktop: larger chunks for better performance
       if (isLargeFile) {
         // Large desktop files: streaming mode for memory safety
         currentSequence.keepsChunksInCache(false);
-        currentSequence.setChunkSize(CHUNK_SIZE_DESKTOP_LARGE);
-        currentSequence.setMaxCacheSize(CACHE_SIZE_DESKTOP_LARGE);
-        console.log('[Volumetrik] Desktop large:', (CHUNK_SIZE_DESKTOP_LARGE / 1024 / 1024).toFixed(1), 'MB chunks,', CACHE_SIZE_DESKTOP_LARGE, 'frame cache');
+
+        // Use custom chunk size if available, otherwise default
+        const chunkSize = customChunkSize.desktop || CHUNK_SIZE_DESKTOP_LARGE;
+        const cacheSize = customCacheSize.desktop || CACHE_SIZE_DESKTOP_LARGE;
+
+        currentSequence.setChunkSize(chunkSize);
+        currentSequence.setMaxCacheSize(cacheSize);
+        console.log('[Volumetrik] Desktop large:', (chunkSize / 1024 / 1024).toFixed(1), 'MB chunks,', cacheSize, 'frame cache', customChunkSize.desktop ? '(custom)' : '(default)');
       } else {
         // Normal desktop files: full caching for smooth playback
         currentSequence.keepsChunksInCache(true);
@@ -1296,11 +1326,26 @@ function createSequence(videoId, videoConfig, options = {}) {
       clearTimeout(loadingTimeout);
       loadingTimeout = null;
     }
+
+    // Enhanced error message with diagnostics
+    const errorDetails = [];
+    errorDetails.push(`Error: ${error.message || 'Unknown error'}`);
+
+    if (videoId === 'dance-didik') {
+      errorDetails.push('');
+      errorDetails.push('Dua Muka Diagnostics:');
+      errorDetails.push('• File size: ' + (IS_MOBILE ? '~3GB mobile' : '~3.1GB desktop'));
+      errorDetails.push('• Network: Check your connection speed');
+      errorDetails.push('• Try refreshing the page and waiting longer');
+      errorDetails.push('• Or try another performance first');
+    }
+
     openLoadingPanel();
     renderLoadingTemplate({
       heading: 'Unexpected error',
       headingColor: '#ff6b6b',
-      description: 'Something went wrong while preparing this volumetric recording. Please try again.',
+      description: 'Something went wrong while preparing this volumetric recording.',
+      detailItems: errorDetails,
       showSpinner: false,
       showCloseButton: true
     });
